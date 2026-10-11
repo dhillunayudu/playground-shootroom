@@ -1115,22 +1115,36 @@ CREATE TABLE AttributeVocabulary (
   SortOrder               SMALLINT     NOT NULL DEFAULT 0,
   FitRelevant             TINYINT(1)   NOT NULL DEFAULT 0,   -- drives relaxation order
   IsFilterable            TINYINT(1)   NOT NULL DEFAULT 0,   -- FR-CAT / F2.2 rail
-  Version                 VARCHAR(20)  NOT NULL,
+  -- One row per value for the life of the vocabulary. A value is never
+  -- re-created per version, so a model's attribute keeps pointing at the same
+  -- row; the vocabulary's state at any version is AddedInVersion <= v and
+  -- (DeprecatedAt IS NULL or deprecated after v).
+  AddedInVersion          VARCHAR(20)  NOT NULL,
   DeprecatedAt            DATETIME(3)  NULL,
   PRIMARY KEY (Id),
-  UNIQUE KEY UX_AttributeVocabulary_NamespaceAttrKeyAttrValueVersion (Namespace, AttrKey, AttrValue, Version),
+  UNIQUE KEY UX_AttributeVocabulary_NamespaceAttrKeyAttrValue (Namespace, AttrKey, AttrValue),
+  UNIQUE KEY UX_AttributeVocabulary_IdNamespaceAttrKey (Id, Namespace, AttrKey),  -- target of the ModelAttributes composite FK
   KEY IX_AttributeVocabulary_NamespaceAttrKeyDeprecatedAt (Namespace, AttrKey, DeprecatedAt)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- The filter index. One row per attribute per Models.
-CREATE TABLE ModelTags (
+-- Each model's attribute values — the filter index. Named ModelAttributes, not
+-- ModelTags, to keep it distinct from product Tags.
+-- A row can only hold a value that exists in AttributeVocabulary: the composite
+-- FK (AttributeVocabularyId, Namespace, AttrKey) also guarantees the value
+-- belongs to the attribute it is filed under, so "brown" cannot be stored
+-- as a build. One value per attribute per model (PRIMARY KEY).
+-- Gender is NOT stored here — it is Models.Gender, a shoot gate.
+CREATE TABLE ModelAttributes (
   ModelId                 CHAR(26)     NOT NULL,
-  Namespace               VARCHAR(40)  NOT NULL,
-  AttrKey                 VARCHAR(60)  NOT NULL,
-  AttrValue               VARCHAR(120) NOT NULL,
+  Namespace               VARCHAR(40)  NOT NULL,      -- 'face','body','hair','skin','accessories'
+  AttrKey                 VARCHAR(60)  NOT NULL,      -- 'eye_colour'
+  AttributeVocabularyId   CHAR(26)     NOT NULL,      -- the value, e.g. eye_colour = brown
   PRIMARY KEY (ModelId, Namespace, AttrKey),
-  KEY IX_ModelTags_NamespaceAttrKeyAttrValueModelId (Namespace, AttrKey, AttrValue, ModelId),   -- PRD T4
-  CONSTRAINT FK_ModelTags_ModelId FOREIGN KEY (ModelId) REFERENCES Models(Id)
+  KEY IX_ModelAttributes_AttributeVocabularyIdModelId (AttributeVocabularyId, ModelId),   -- PRD T4: "all models with brown eyes"
+  CONSTRAINT FK_ModelAttributes_ModelId FOREIGN KEY (ModelId) REFERENCES Models(Id),
+  CONSTRAINT FK_ModelAttributes_Vocabulary FOREIGN KEY (AttributeVocabularyId, Namespace, AttrKey)
+    REFERENCES AttributeVocabulary(Id, Namespace, AttrKey)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE Poses (
@@ -1557,7 +1571,7 @@ CREATE TABLE AuditLogs (
 --      checked at model browse AND again immediately before generation — a
 --      model may be un-approved for a segment between the two.  (FR-SEG-*)
 --
--- 5. BROWSE QUERY SHAPE. Filtering is an intersection over ModelTags.
+-- 5. BROWSE QUERY SHAPE. Filtering is an intersection over ModelAttributes.
 --    At library Sizes under ~2,000 models, load the visible library
 --    into memory and filter there rather than composing N joins.
 --    Revisit only when that stops holding.

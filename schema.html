@@ -330,9 +330,9 @@ T('Models','library','One synthetic person — each variant in a roster cell is 
   'CoolingUntil|DATETIME|n','UsageCount|INT','ApprovedBy|CHAR(26)|n','ApprovedAt|DATETIME|n']),
 T('AttributeVocabulary','library','Controlled vocabulary. Drives the filter rail, the prompt and the coverage dashboard.',
  ['Id|CHAR(26)|p','Namespace|VARCHAR(40)','AttrKey|VARCHAR(60)','AttrValue|VARCHAR(120)',
-  'Label|VARCHAR(120)','FitRelevant|TINYINT','IsFilterable|TINYINT','Version|VARCHAR','DeprecatedAt|DATETIME|n']),
-T('ModelTags','library','The filter index. One row per attribute per Models.',
- ['ModelId|CHAR(26)|pf','Namespace|VARCHAR(40)|p','AttrKey|VARCHAR(60)|p','AttrValue|VARCHAR(120)']),
+  'Label|VARCHAR(120)','FitRelevant|TINYINT','IsFilterable|TINYINT','AddedInVersion|VARCHAR','DeprecatedAt|DATETIME|n']),
+T('ModelAttributes','library','Each model\'s attribute values — the filter index. One value per attribute per model, and only a value that exists in AttributeVocabulary. Gender lives on Models, not here. Distinct from product Tags.',
+ ['ModelId|CHAR(26)|pf','Namespace|VARCHAR(40)|p','AttrKey|VARCHAR(60)|p','AttributeVocabularyId|CHAR(26)|f']),
 T('Poses','library','try_on_safe marks the frontal Poses used as try-on input.',
  ['Id|CHAR(26)|p','Code|VARCHAR(20)','Label|VARCHAR(120)','Description|VARCHAR|n',
   'TryOnSafe|TINYINT','RequiresBackImage|TINYINT','SortOrder|SMALLINT','IsActive|TINYINT']),
@@ -401,7 +401,7 @@ T('AuditLogs','ops','Every actor — members, staff and system jobs. Append only
 /* Tables reviewed and finalised. Add a name here as each is signed off. */
 var REVIEWED=['Clients','Users','UserAccess','Invitations','AuthTokens','Sessions',
               'StaffUsers','StaffRoles','ClientSettings','NotificationPreferences','Plans','PlanPrices','Subscriptions',
-              'SubscriptionPeriods','UsageSnapshots','CreditPacks','CreditLedger','CreditBalances','Invoices','BillingProfiles','StripeEvents','ClientUsage','Brands','Segments','Categories','SubCategories','SegmentModels','ClientEntitlements','Colours','Fabrics','Seasons','SizeSets','AuditLogs','Models'];
+              'SubscriptionPeriods','UsageSnapshots','CreditPacks','CreditLedger','CreditBalances','Invoices','BillingProfiles','StripeEvents','ClientUsage','Brands','Segments','Categories','SubCategories','SegmentModels','ClientEntitlements','Colours','Fabrics','Seasons','SizeSets','AuditLogs','Models','ModelAttributes'];
 var isDone=function(n){ return REVIEWED.indexOf(n)>-1; };
 
 /* ============ relationships ============ */
@@ -457,7 +457,8 @@ var R=[
  ['SubCategoryTags','TagId','Tags','Id'],
  ['ProductImages','ProductId','Products','Id'],
  ['ProductImages','ProductVariantId','ProductVariants','Id'],
- ['ModelTags','ModelId','Models','Id'],
+ ['ModelAttributes','ModelId','Models','Id'],
+ ['ModelAttributes','AttributeVocabularyId','AttributeVocabulary','Id'],
  ['Plates','ModelId','Models','Id'],
  ['Plates','PoseId','Poses','Id'],
  ['PlateVariantRenders','PlateId','Plates','Id'],

@@ -390,11 +390,11 @@ A library model is only useful if it stays **the same person** across every plat
 | Term | Meaning | Where it lives |
 |---|---|---|
 | **Model** | One specific synthetic person — bm_014. The four variants in a gender × ethnicity cell are **four models**, each its own record | `Models`, one row each (104 at launch) |
-| **Attributes** | Eye colour, build, hair and so on — one value per attribute | `ModelTags`, one row per attribute |
+| **Attributes** | Eye colour, build, hair and so on — one value per attribute, each pointing at a value in `AttributeVocabulary` | `ModelAttributes`, one row per attribute |
 | **Plate** | One generated image of a model: plate type × pose × base cut | `Plates` |
 | **Plate variant render** | A plate with a base garment inpainted (the jeans under a top shoot) | `PlateVariantRenders` |
 
-A prompt is **assembled** from the model's attributes plus the pose, plate type and base cut, and **stored on the image it produced**. It is never stored on `ModelTags` (one attribute per row cannot hold a whole prompt) and never on `Models` (the prompt differs per pose).
+A prompt is **assembled** from the model's attributes plus the pose, plate type and base cut, and **stored on the image it produced**. It is never stored on `ModelAttributes` (one attribute per row cannot hold a whole prompt) and never on `Models` (the prompt differs per pose).
 
 #### 7.9.2 How identity is held: reference image first, seed second
 
@@ -446,7 +446,7 @@ Sources: [fal.ai — FLUX.1 [dev] API](https://fal.ai/models/fal-ai/flux/dev/api
 | `PlateVariants` | `InpaintPrompt` | Shared garment prompt — "dark denim baggy jeans" — for every model that wears it |
 | `PlateVariantRenders` | Final prompt sent | The assembled inpaint prompt for that plate + garment combination |
 
-**Vocabulary history.** The vocabulary itself is versioned value by value (`AttributeVocabulary.Version`, `DeprecatedAt`), so its state at any version can be reconstructed. A model's own re-tagging is not kept in a separate table: re-tagging is a change to a model and is written to the audit log with before and after values (FRD FR-AUD-04).
+**Vocabulary history.** The vocabulary itself is versioned value by value (`AttributeVocabulary.AddedInVersion`, `DeprecatedAt`), so its state at any version can be reconstructed. A model's own re-tagging is not kept in a separate table: re-tagging is a change to a model and is written to the audit log with before and after values (FRD FR-AUD-04).
 
 | ID | Requirement | Priority |
 |---|---|---|
@@ -490,22 +490,26 @@ Four stages, in order. Stages 1 and 2 are usually cache hits.
 ## 9. Data model
 
 ```
-Model                          (master record — one row per casting)
-  id, name, status (draft|approved|retired)
-  storage_prefix               -- /models/{model_id}/
+Model                          (master record — one row per synthetic person)
+  id, code, gender, status (draft|approved|retired)
+  storage_prefix               -- /models/{code}/
   vocabulary_version
-  prompt_template_id, seed     -- so the model can be re-generated identically
-  usage_count, last_used_at, created_at, approved_at
+  reference_image_uri          -- identity anchor (§7.9)
+  generation_seed?, generator_provider, generator_model_version
+  usage_count, last_used_at    -- recomputed from runs by a job
+  availability + booking mirror
 
-ModelTag                       (one row per attribute — the filter index)
-  model_id, namespace, key, value
-  PRIMARY KEY (model_id, namespace, key)
-  INDEX (namespace, key, value)   -- drives every filter query
+ModelAttribute                 (one row per attribute — the filter index)
+  model_id, namespace, attr_key, attribute_vocabulary_id
+  PRIMARY KEY (model_id, namespace, attr_key)
+  FK (attribute_vocabulary_id, namespace, attr_key) → AttributeVocabulary
+  INDEX (attribute_vocabulary_id, model_id)   -- drives every filter query
 
-AttributeVocabulary            (controlled vocabulary, versioned)
-  namespace, key, value, label, sort_order
+AttributeVocabulary            (controlled vocabulary, one row per value)
+  namespace, attr_key, attr_value, label, sort_order
   fit_relevant (bool)          -- drives filter relaxation order (F2.8b)
-  version, deprecated_at
+  is_filterable
+  added_in_version, deprecated_at
 
 CastingRequest                 (tier-3 demand signal)
   id, user_id, filter_json, created_at
