@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shootroom — Plate console (internal)</title>
+
+<!--
+  ==================================================================
+  PLATE CONSOLE — internal tool, not customer facing
+  ------------------------------------------------------------------
+  Operated by a human. Select a base model from the roster, review
+  and adjust its attributes, copy the generated prompt, run it in
+  the image generator, then QA and upload the result.
+
+  This tool writes prompts. It does not call the generation API and
+  it does not decide anything. Every plate is reviewed by a person
+  against the §7.6 QA checklist before it enters the library.
+
+  Design system inherited from the customer app: bone / ink /
+  selvedge, Manrope + IBM Plex Mono.
+  ==================================================================
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bone:#F6F4F0; --bone-2:#EDEAE4; --bone-3:#E4E0D8; --ink:#0E0E0E;
+  --ink-70:rgba(14,14,14,.70); --ink-45:rgba(14,14,14,.45); --ink-22:rgba(14,14,14,.22);
+  --hair:rgba(14,14,14,.13); --selvedge:#B4241F;
+  --ease:cubic-bezier(.16,1,.3,1); --track:-.025em;
+  --f-ui:Manrope,system-ui,sans-serif; --f-mono:'IBM Plex Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;}
+body{background:var(--bone);color:var(--ink);font-family:var(--f-ui);font-size:14px;
+  -webkit-font-smoothing:antialiased;overflow:hidden;}
+button,input,select,textarea{font:inherit;color:inherit;}
+button{background:none;border:0;cursor:pointer;}
+:focus-visible{outline:1.5px solid var(--selvedge);outline-offset:2px;}
+.mono{font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;}
+
+.shell{display:flex;flex-direction:column;height:100vh;}
+.masthead{height:60px;flex:0 0 60px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;border-bottom:1px solid var(--hair);gap:20px;}
+.wordmark{font-weight:700;font-size:19px;letter-spacing:var(--track);}
+.wordmark i{font-style:normal;color:var(--selvedge);}
+.wordmark span{font-weight:500;color:var(--ink-45);font-size:13px;margin-left:9px;letter-spacing:0;}
+.badge{font-family:var(--f-mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--selvedge);color:var(--selvedge);padding:4px 8px;border-radius:4px;}
+.mast-r{display:flex;align-items:center;gap:18px;}
+.mast-r .mono{color:var(--ink-45);}
+.mast-r .mono b{color:var(--ink);font-weight:600;}
+
+.body{flex:1;min-height:0;display:grid;grid-template-columns:262px minmax(0,1fr) 400px;}
+
+/* ---------- roster ---------- */
+.roster{border-right:1px solid var(--hair);display:flex;flex-direction:column;min-height:0;}
+.rfilter{padding:12px 14px;border-bottom:1px solid var(--hair);display:flex;flex-direction:column;gap:8px;}
+.rfilter input,.rfilter select{width:100%;border:1px solid var(--hair);background:var(--bone-2);
+  border-radius:6px;padding:8px 10px;font-size:12.5px;}
+.rfilter input::placeholder{color:var(--ink-45);}
+.rlist{overflow-y:auto;flex:1;}
+.rlist::-webkit-scrollbar{width:3px;}
+.rlist::-webkit-scrollbar-thumb{background:var(--ink-22);}
+.rgroup{font-family:var(--f-mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-45);padding:13px 14px 6px;position:sticky;top:0;background:var(--bone);}
+.ritem{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 14px;
+  border-left:2px solid transparent;transition:background .14s var(--ease);}
+.ritem:hover{background:var(--bone-2);}
+.ritem.on{background:var(--bone-2);border-left-color:var(--selvedge);}
+.ritem .sw{width:17px;height:17px;border-radius:50%;border:1px solid rgba(14,14,14,.15);flex:0 0 auto;}
+.ritem .tx{min-width:0;}
+.ritem .id{font-family:var(--f-mono);font-size:9px;letter-spacing:.08em;color:var(--ink-45);}
+.ritem.on .id{color:var(--selvedge);}
+.ritem .ds{font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ritem .st{margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--ink-22);flex:0 0 auto;}
+.ritem.done .st{background:#3E7A4E;}
+
+/* ---------- editor ---------- */
+.editor{overflow-y:auto;padding:20px 26px 40px;min-height:0;}
+.editor::-webkit-scrollbar{width:3px;}
+.editor::-webkit-scrollbar-thumb{background:var(--ink-22);}
+.ehead{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;
+  padding-bottom:14px;border-bottom:1px solid var(--ink);margin-bottom:18px;}
+.ehead h1{font-weight:600;font-size:24px;letter-spacing:var(--track);line-height:1.1;}
+.ehead .sub{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-45);margin-top:7px;}
+.tabs{display:flex;gap:5px;}
+.tab{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;
+  padding:8px 12px;border:1px solid var(--hair);border-radius:6px;transition:.15s var(--ease);white-space:nowrap;}
+.tab:hover{border-color:var(--ink-45);}
+.tab.on{background:var(--ink);border-color:var(--ink);color:var(--bone);}
+.tabrow{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.tabrow .lb{font-family:var(--f-mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-45);}
+
+.grp{margin-bottom:22px;}
+.grp-h{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+  padding-bottom:7px;border-bottom:1px solid var(--hair);margin-bottom:11px;}
+.grp-h .l{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;}
+.grp-h .a{font-family:var(--f-mono);font-size:8.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-22);}
+.grp-h .a.anchor{color:var(--selvedge);}
+.chips{display:flex;flex-wrap:wrap;gap:5px;}
+.chip{font-size:12px;padding:6px 11px;border:1px solid var(--hair);background:var(--bone-2);
+  border-radius:20px;transition:.14s var(--ease);}
+.chip:hover{border-color:var(--ink-45);}
+.chip.on{background:var(--ink);border-color:var(--ink);color:var(--bone);font-weight:500;}
+.free{width:100%;border:1px solid var(--hair);background:var(--bone-2);border-radius:8px;
+  padding:10px 12px;font-family:var(--f-mono);font-size:12px;resize:vertical;}
+
+/* ---------- output ---------- */
+.out{border-left:1px solid var(--hair);display:flex;flex-direction:column;min-height:0;background:var(--bone-2);}
+.ohead{padding:14px 16px;border-bottom:1px solid var(--hair);display:flex;align-items:center;
+  justify-content:space-between;gap:10px;}
+.ohead .t{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-45);}
+.obody{flex:1;overflow-y:auto;padding:14px 16px 20px;}
+.obody::-webkit-scrollbar{width:3px;}
+.obody::-webkit-scrollbar-thumb{background:var(--ink-22);}
+.block{margin-bottom:14px;}
+.block .bh{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px;}
+.block .bt{font-family:var(--f-mono);font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-45);}
+.block .bt.neg{color:var(--selvedge);}
+.copy{font-family:var(--f-mono);font-size:8.5px;letter-spacing:.11em;text-transform:uppercase;
+  border:1px solid var(--hair);border-radius:5px;padding:4px 8px;transition:.15s var(--ease);}
+.copy:hover{border-color:var(--ink);}
+.copy.done{border-color:#3E7A4E;color:#3E7A4E;}
+pre{font-family:var(--f-mono);font-size:10.5px;line-height:1.62;white-space:pre-wrap;word-break:break-word;
+  background:var(--bone);border:1px solid var(--hair);border-radius:8px;padding:11px 12px;}
+pre.neg{border-color:rgba(180,36,31,.3);}
+.qa{background:var(--bone);border:1px solid var(--hair);border-radius:8px;padding:12px;margin-top:4px;}
+.qa .qt{font-family:var(--f-mono);font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-45);margin-bottom:9px;}
+.qa label{display:flex;gap:9px;align-items:flex-start;font-size:11.5px;line-height:1.45;
+  padding:5px 0;color:var(--ink-70);cursor:pointer;}
+.qa input{accent-color:var(--selvedge);margin-top:2px;flex:0 0 auto;}
+.mark{width:100%;margin-top:11px;background:var(--ink);color:var(--bone);border-radius:7px;padding:11px;
+  font-family:var(--f-mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;transition:.2s var(--ease);}
+.mark:hover:not(:disabled){background:#3E7A4E;}
+.mark:disabled{background:transparent;color:var(--ink-22);box-shadow:inset 0 0 0 1px var(--hair);cursor:not-allowed;}
+
+@media (max-width:1280px){.body{grid-template-columns:222px minmax(0,1fr) 340px;}}
+@media (max-width:1000px){.body{grid-template-columns:1fr;overflow-y:auto;}
+  .roster,.out{border:0;border-bottom:1px solid var(--hair);}
+  body{overflow:auto;}.shell{height:auto;}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="masthead">
+    <div class="wordmark">Shootroom<i>.</i><span>Plate console</span></div>
+    <div class="mast-r">
+      <span class="badge">Internal · human operated</span>
+      <span class="mono">Roster <b id="mcount">104</b></span>
+      <span class="mono">Built <b id="dcount">0</b></span>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="roster">
+      <div class="rfilter">
+        <input id="q" placeholder="Search ID, ethnicity, build…">
+        <select id="grpby"><option value="eth">Group by ethnicity</option><option value="gen">Group by gender</option><option value="size">Group by size</option></select>
+      </div>
+      <div class="rlist" id="rlist"></div>
+    </aside>
+
+    <main class="editor" id="editor"></main>
+
+    <aside class="out">
+      <div class="ohead"><span class="t">Generation prompt</span><span class="t" id="ostate"></span></div>
+      <div class="obody" id="obody"></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+var $=function(s){return document.querySelector(s);};
+
+/* ============ ROSTER (mirrors PRD Appendix A) ============ */
+var SKINHEX={'Porcelain':'#F2DCCB','Fair':'#EDCBAE','Light':'#E3B492','Light medium':'#D3A07C',
+ 'Medium':'#BE8862','Olive':'#AB7E55','Tan':'#9C6A44','Deep tan':'#875733','Brown':'#6E4527',
+ 'Deep brown':'#553520','Ebony':'#3B2416'};
+
+var ETH=[
+ ['South Asian','Deep brown','Jet black','Straight with body','Oval','Straight',['Light medium','Medium','Tan','Deep brown'],158,170],
+ ['East Asian','Deep brown','Jet black','Pin straight','Round','Low bridge',['Porcelain','Fair','Light','Light medium'],159,171],
+ ['Southeast Asian','Deep brown','Jet black','Straight with body','Heart','Button',['Light','Light medium','Medium','Tan'],154,165],
+ ['Middle Eastern','Warm brown','Dark brown','Defined waves','Oblong','Aquiline',['Fair','Light medium','Olive','Tan'],160,173],
+ ['North African','Warm brown','Dark brown','Defined waves','Diamond','Straight',['Light medium','Olive','Tan','Deep tan'],160,172],
+ ['West African','Deep brown','Jet black','Coily 4C','Square','Wide bridge',['Deep tan','Brown','Deep brown','Ebony'],160,172],
+ ['East African','Deep brown','Jet black','Coily 4A','Diamond','Narrow bridge',['Tan','Brown','Deep brown','Ebony'],162,174],
+ ['Afro-Caribbean','Deep brown','Jet black','Tight curls','Heart','Rounded tip',['Light medium','Tan','Brown','Deep brown'],163,175],
+ ['Northern European','Blue','Ash brown','Pin straight','Oblong','Narrow bridge',['Porcelain','Fair','Light','Light medium'],168,181],
+ ['Southern European','Warm brown','Chestnut','Loose waves','Oval','Aquiline',['Fair','Light','Light medium','Olive'],164,176],
+ ['Latin American','Warm brown','Dark brown','Loose waves','Round','Rounded tip',['Light','Light medium','Medium','Tan'],158,170],
+ ['Pacific Islander','Deep brown','Jet black','Loose curls','Square','Wide bridge',['Medium','Tan','Deep tan','Brown'],164,175],
+ ['Mixed heritage','Hazel','Dark brown','Loose curls','Diamond','Rounded tip',['Light','Light medium','Medium','Deep tan'],164,176]
+];
+var LADDER=[['Slender','S',-5,'Rectangle'],['Average','M',0,'Rectangle'],[null,'L',6,'Hourglass'],['Plus size','XL',1,'Apple']];
+var AGES=['18–24','25–32','33–40','41–50','51–65'];
+var ATYP=['light freckles across the nose','green eyes','early silver hair','vitiligo on the hands',
+ 'a gap between the front teeth','heterochromia','alopecia, shaved head','a prominent beauty mark',
+ 'amber eyes','auburn hair','light natural acne scarring','a grey streak at the temple','deep dimples'];
+
+function hh(cm){var t=Math.round(cm/2.54);return Math.floor(t/12)+"'"+(t%12)+'"';}
+
+var MODELS=[],i=1;
+ETH.forEach(function(e,ei){
+  ['Feminine','Masculine'].forEach(function(g,gi){
+    var med=gi===0?e[7]:e[8], slot=(ei+gi*2)%4;
+    LADDER.forEach(function(L,si){
+      MODELS.push({
+        id:'bm_'+String(i).padStart(3,'0'),
+        eth:e[0], gender:g,
+        build:L[0]||(gi===0?'Curvy':'Athletic'),
+        size:(si===3&&gi===0)?'XL–2XL':L[1],
+        shape:(gi===1&&si===2)?'Inverted triangle':L[3],
+        heightCm:med+L[2], height:hh(med+L[2]),
+        skin:e[6][si], age:AGES[(si+ei)%5],
+        eyeColour:e[1], hairColour:e[2], hairTexture:e[3], faceShape:e[4], nose:e[5],
+        atypical:si===slot?ATYP[ei]:null,
+        done:false, over:{}
+      });
+      i++;
+    });
+  });
+});
+
+/* ============ ATTRIBUTE OPTIONS ============ */
+var FIELDS=[
+ {g:'Identity',anchor:1,f:[
+   {k:'gender',l:'Gender',o:['Feminine','Masculine','Androgynous']},
+   {k:'eth',l:'Heritage',o:ETH.map(function(e){return e[0];})},
+   {k:'age',l:'Age band',o:AGES}]},
+ {g:'Body',f:[
+   {k:'build',l:'Build',o:['Slender','Lean','Athletic','Toned','Average','Mid-size','Curvy','Plus size','Muscular']},
+   {k:'size',l:'Garment size',o:['XS','S','M','L','XL','XL–2XL','2XL','3XL']},
+   {k:'shape',l:'Body shape',o:['Hourglass','Pear','Apple','Rectangle','Inverted triangle']},
+   {k:'shoulders',l:'Shoulders',o:['Narrow sloping','Narrow straight','Average','Broad','Square','Athletic']},
+   {k:'chest',l:'Chest / bust',o:['Flat','Small','Medium','Full','Very full','Broad chest','Defined pectorals']},
+   {k:'waist',l:'Waist',o:['Cinched','Defined','Straight','Soft','Full']},
+   {k:'hips',l:'Hips',o:['Narrow','Average','Wide','Full and rounded']},
+   {k:'thighs',l:'Thighs',o:['Slim','Toned','Athletic','Thick','Full and soft']},
+   {k:'arms',l:'Arms',o:['Slender','Toned','Athletic','Soft and full','Thick']}]},
+ {g:'Skin',anchor:1,f:[
+   {k:'skin',l:'Skin tone',o:Object.keys(SKINHEX)},
+   {k:'undertone',l:'Undertone',o:['Cool','Warm','Neutral','Olive','Golden']},
+   {k:'finish',l:'Finish',o:['Natural pores','Matte','Dewy glow','Textured realistic']}]},
+ {g:'Hair',anchor:1,f:[
+   {k:'hairColour',l:'Colour',o:['Jet black','Soft black','Dark brown','Chestnut','Auburn','Copper','Honey','Blonde','Platinum','Ash brown','Silver','Salt and pepper']},
+   {k:'hairTexture',l:'Texture',o:['Pin straight','Straight with body','Loose waves','Defined waves','Loose curls','Tight curls','Coily 4A','Coily 4C']},
+   {k:'hairLength',l:'Length',o:['Buzzed','Cropped','Chin-length bob','Shoulder-length','Mid-back','Waist-length']},
+   {k:'hairStyle',l:'Styling',o:['Loose and down','Middle part','Side part','Low bun','Braided','Locs','Afro','Headwrap']},
+   {k:'facialHair',l:'Facial hair',o:['Clean shaven','Light stubble','Short beard','Full beard']}]},
+ {g:'Face',anchor:1,f:[
+   {k:'faceShape',l:'Face shape',o:['Oval','Round','Square','Heart','Diamond','Oblong','Triangular']},
+   {k:'jaw',l:'Jawline',o:['Soft rounded','Gently defined','Sharp angular','Wide square','Narrow tapered']},
+   {k:'cheek',l:'Cheekbones',o:['High and sculpted','Soft and full','Wide-set','Subtle','Rounded apple']},
+   {k:'nose',l:'Nose',o:['Straight','Aquiline','Button','Upturned','Wide bridge','Narrow bridge','Rounded tip','Low bridge']},
+   {k:'eyeShape',l:'Eye shape',o:['Almond','Round','Hooded','Monolid','Downturned','Upturned','Deep-set']},
+   {k:'eyeColour',l:'Eye colour',o:['Deep brown','Warm brown','Light brown','Hazel','Amber','Green','Blue','Grey']},
+   {k:'brows',l:'Eyebrows',o:['Thick straight','Softly arched','Feathered','Thin','Bushy']},
+   {k:'lips',l:'Lips',o:['Thin','Medium','Full','Heart-shaped','Wide']}]}
+];
+
+var PLATES={
+ T:{n:'Top plate',base:'a fitted sleeveless scoop-neck tank in matte stone-grey with the neckline sitting at the collarbone, and slim straight-leg trousers in the same stone-grey'},
+ B:{n:'Bottom plate',base:'a fitted short-sleeve top in matte stone-grey tucked in at the waist so the waistline is clearly visible, and slim straight-leg trousers in the same stone-grey'},
+ F:{n:'Full-outfit plate',base:'a fitted sleeveless scoop-neck tank in matte stone-grey and fitted mid-thigh shorts in the same stone-grey'}
+};
+var POSES={
+ p1:{n:'Frontal (try-on input)',d:'Standing straight to camera, symmetrical, weight even on both feet, arms relaxed at the sides with a clear visible gap between each arm and the torso, hands open and separated from the thighs, fingers relaxed and countable'},
+ p2:{n:'Three-quarter left',d:'Three-quarter turn to the left with shoulders angled and hips following, head turned back toward the lens, weight on the back leg, arms relaxed and clear of the torso'},
+ p3:{n:'Three-quarter right',d:'Three-quarter turn to the right with shoulders angled and hips following, head turned back toward the lens, weight on the back leg, arms relaxed and clear of the torso'},
+ p4:{n:'Back view',d:'Standing with the back to camera, symmetrical, weight even, arms relaxed at the sides with a clear gap from the torso, head level'}
+};
+var LOCK='Entire body visible from head to toe, both feet fully in frame with visible floor beneath them, generous headroom above the hair, vertical full-body composition. 50mm lens, eye level, 9:16 aspect ratio.';
+var NEG='cropped at the bust, cut-off feet, head out of frame, portrait crop, arms touching the torso, hands overlapping the body, hair across the chest, deformed hands, extra fingers, patterned clothing, logos, text, lettering, labels, captions, watermark, sheen, oiled skin, harsh shadows, plastic skin, over-smoothed skin';
+var QAITEMS=['Visible gap between each arm and the torso','Hands clear of hips and thighs, fingers countable',
+ 'Hair entirely clear of the chest','Both feet in frame with visible floor','No cropping at bust or head',
+ 'Skin texture natural, not plastic','Base garment plain, no pattern or hardware'];
+
+var S={sel:MODELS[0],plate:'T',pose:'p1',mode:'prose',qa:{}};
+function v(k){ return (S.sel.over[k]!==undefined) ? S.sel.over[k] : S.sel[k]; }
+
+/* ============ ROSTER LIST ============ */
+function rosterList(){
+  var q=$('#q').value.toLowerCase(), by=$('#grpby').value;
+  var list=MODELS.filter(function(m){
+    return !q || (m.id+' '+m.eth+' '+m.gender+' '+m.build+' '+m.size+' '+m.skin).toLowerCase().indexOf(q)>-1;
+  });
+  var keyf={eth:function(m){return m.eth;},gen:function(m){return m.gender;},size:function(m){return 'Size '+m.size;}}[by];
+  var html='',last=null;
+  list.forEach(function(m){
+    var k=keyf(m);
+    if(k!==last){ html+='<div class="rgroup">'+k+'</div>'; last=k; }
+    html+='<button class="ritem '+(S.sel.id===m.id?'on':'')+' '+(m.done?'done':'')+'" data-id="'+m.id+'">'+
+      '<span class="sw" style="background:'+SKINHEX[m.skin]+'"></span>'+
+      '<span class="tx"><span class="id">'+m.id+'</span>'+
+      '<span class="ds">'+m.gender.charAt(0)+' · '+m.build+' · '+m.size+' · '+m.height+'</span></span>'+
+      '<span class="st"></span></button>';
+  });
+  $('#rlist').innerHTML=html||'<div class="rgroup">No matches</div>';
+  $('#rlist').querySelectorAll('.ritem').forEach(function(b){
+    b.onclick=function(){ S.sel=MODELS.filter(function(m){return m.id===b.dataset.id;})[0]; S.qa={}; render(); };
+  });
+  $('#dcount').textContent=MODELS.filter(function(m){return m.done;}).length;
+}
+
+/* ============ EDITOR ============ */
+function editor(){
+  var m=S.sel;
+  var html='<div class="ehead"><div><h1>'+m.eth+' · '+m.gender+'</h1>'+
+    '<div class="sub">'+m.id+' · '+m.build+' · size '+m.size+' · '+m.height+' · '+m.age+
+    (m.atypical?' · '+m.atypical:'')+'</div></div></div>';
+
+  html+='<div class="tabrow"><span class="lb">Plate</span>'+
+    Object.keys(PLATES).map(function(k){
+      return '<button class="tab '+(S.plate===k?'on':'')+'" data-plate="'+k+'">'+k+' · '+PLATES[k].n+'</button>';
+    }).join('')+'</div>';
+  html+='<div class="tabrow"><span class="lb">Pose</span>'+
+    Object.keys(POSES).map(function(k){
+      return '<button class="tab '+(S.pose===k?'on':'')+'" data-pose="'+k+'">'+POSES[k].n+'</button>';
+    }).join('')+'</div>';
+
+  FIELDS.forEach(function(G){
+    html+='<div class="grp"><div class="grp-h"><span class="l">'+G.g+'</span>'+
+      '<span class="a '+(G.anchor?'anchor':'')+'">'+(G.anchor?'Anchor — shared across the cell':'Varies by variant')+'</span></div>';
+    G.f.forEach(function(f){
+      html+='<div style="margin-bottom:11px"><div class="grp-h" style="border:0;padding:0;margin-bottom:6px">'+
+        '<span class="a">'+f.l+'</span></div><div class="chips">'+
+        f.o.map(function(o){
+          return '<button class="chip '+(v(f.k)===o?'on':'')+'" data-k="'+f.k+'" data-v="'+o+'">'+o+'</button>';
+        }).join('')+'</div></div>';
+    });
+    html+='</div>';
+  });
+
+  html+='<div class="grp"><div class="grp-h"><span class="l">Distinguishing note</span>'+
+    '<span class="a">Free text, appended verbatim</span></div>'+
+    '<textarea class="free" id="atyp" rows="2" placeholder="e.g. light freckles across the nose">'+(m.atypical||'')+'</textarea></div>';
+
+  var e=$('#editor'); e.innerHTML=html;
+  e.querySelectorAll('[data-plate]').forEach(function(b){ b.onclick=function(){S.plate=b.dataset.plate;render();}; });
+  e.querySelectorAll('[data-pose]').forEach(function(b){ b.onclick=function(){S.pose=b.dataset.pose;render();}; });
+  e.querySelectorAll('[data-k]').forEach(function(b){
+    b.onclick=function(){ m.over[b.dataset.k]= v(b.dataset.k)===b.dataset.v ? undefined : b.dataset.v; render(); };
+  });
+  $('#atyp').oninput=function(ev){ m.atypical=ev.target.value||null; output(); };
+}
+
+/* ============ PROMPT ============ */
+function prompt(){
+  var m=S.sel, P=PLATES[S.plate], PO=POSES[S.pose], j=function(a){return a.filter(Boolean).join(', ');};
+  var subject=j([v('age'), v('gender').toLowerCase()+' model', 'of '+v('eth')+' heritage']);
+  var face=j([v('faceShape')&&v('faceShape').toLowerCase()+' face', v('jaw')&&v('jaw').toLowerCase()+' jawline',
+    v('cheek')&&v('cheek').toLowerCase()+' cheekbones', v('nose')&&v('nose').toLowerCase()+' nose',
+    v('eyeShape')&&v('eyeShape').toLowerCase()+' eyes', v('eyeColour')&&v('eyeColour').toLowerCase()+' irises',
+    v('brows')&&v('brows').toLowerCase()+' eyebrows', v('lips')&&v('lips').toLowerCase()+' lips',
+    'neutral relaxed expression, gaze direct to camera']);
+  var skin=j([v('skin').toLowerCase()+' skin', v('undertone')&&v('undertone').toLowerCase()+' undertone',
+    (v('finish')||'natural visible pores').toLowerCase(), 'no makeup sheen']);
+  var hair=j([v('hairColour').toLowerCase(), v('hairTexture').toLowerCase(),
+    (v('hairLength')||'shoulder-length').toLowerCase(), v('hairStyle')&&v('hairStyle').toLowerCase(),
+    'pulled back behind the shoulders so it does not fall across the chest',
+    v('gender')==='Masculine'?(v('facialHair')||'clean shaven').toLowerCase():null]);
+  var body=j(['height '+v('height'), v('build').toLowerCase()+' build', v('shape').toLowerCase()+' figure',
+    'wears size '+v('size'), v('shoulders')&&v('shoulders').toLowerCase()+' shoulders',
+    v('arms')&&v('arms').toLowerCase()+' arms', v('chest')&&v('chest').toLowerCase()+' chest',
+    v('waist')&&v('waist').toLowerCase()+' waist', v('hips')&&v('hips').toLowerCase()+' hips',
+    v('thighs')&&v('thighs').toLowerCase()+' thighs']);
+
+  var p=[];
+  p.push('Full-length photorealistic studio photograph of a '+subject+'.');
+  p.push((v('gender')==='Masculine'?'He has ':'She has ')+face+'.');
+  p.push('Skin: '+skin+'.');
+  p.push('Hair: '+hair+'.');
+  p.push('Build: '+body+'.');
+  if(m.atypical) p.push('Distinguishing feature: '+m.atypical+'.');
+  p.push((v('gender')==='Masculine'?'He wears ':'She wears ')+P.base+
+    '. Plain matte woven fabric, no pattern, no logo, no pockets, no buttons, no zips, no visible stitching, no ribbing. Barefoot.');
+  p.push(PO.d+'.');
+  p.push('Plain seamless light grey studio backdrop. Soft even frontal studio lighting, no strong shadows, no cast shadow on the backdrop.');
+  p.push(LOCK);
+  return p.join(' ');
+}
+
+function specPrompt(){
+  var m=S.sel, P=PLATES[S.plate], PO=POSES[S.pose];
+  var rows=[['MODEL',m.id+' · '+PLATES[S.plate].n+' · '+POSES[S.pose].n],
+   ['SUBJECT',v('age')+' '+v('gender').toLowerCase()+' model of '+v('eth')+' heritage'],
+   ['FACE',[v('faceShape'),v('jaw'),v('cheek'),v('nose'),v('eyeShape'),v('eyeColour')+' eyes',v('brows'),v('lips')].filter(Boolean).join(', ')],
+   ['SKIN',[v('skin'),v('undertone')&&v('undertone')+' undertone',v('finish')].filter(Boolean).join(', ')],
+   ['HAIR',[v('hairColour'),v('hairTexture'),v('hairLength'),v('hairStyle')].filter(Boolean).join(', ')],
+   ['BUILD',[v('height'),v('build'),v('shape'),'size '+v('size'),v('shoulders'),v('chest'),v('waist'),v('hips'),v('thighs')].filter(Boolean).join(', ')],
+   ['MARKS',m.atypical||'none'],
+   ['BASE OUTFIT',P.base],
+   ['POSE',PO.d],
+   ['SET','plain seamless light grey backdrop, soft even frontal studio lighting, no cast shadow'],
+   ['FRAMING',LOCK]];
+  return rows.map(function(r){return r[0]+': '+r[1];}).join('\n');
+}
+
+function jsonSpec(){
+  var m=S.sel, o={model_id:m.id,plate_type:S.plate,pose_id:S.pose,
+    storage_path:'/models/'+m.id+'/canonical/'+S.plate+'/'+S.pose+'.webp',tags:{}};
+  FIELDS.forEach(function(G){G.f.forEach(function(f){ if(v(f.k)) o.tags[f.k]=v(f.k); });});
+  o.tags.height=v('height'); o.tags.atypical=m.atypical||null;
+  return JSON.stringify(o,null,2);
+}
+
+function output(){
+  var txt = S.mode==='prose'?prompt():S.mode==='spec'?specPrompt():jsonSpec();
+  var done = QAITEMS.every(function(_,i){return S.qa[i];});
+  $('#ostate').textContent=S.sel.id+' · '+S.plate+' · '+S.pose;
+  $('#obody').innerHTML=
+    '<div class="tabrow" style="margin-bottom:12px">'+
+      [['prose','Prose'],['spec','Spec'],['json','JSON']].map(function(x){
+        return '<button class="tab '+(S.mode===x[0]?'on':'')+'" data-mode="'+x[0]+'">'+x[1]+'</button>';
+      }).join('')+'</div>'+
+    '<div class="block"><div class="bh"><span class="bt">Positive prompt</span>'+
+      '<button class="copy" data-c="pos">Copy</button></div><pre id="pp">'+txt.replace(/</g,'&lt;')+'</pre></div>'+
+    '<div class="block"><div class="bh"><span class="bt neg">Negative prompt</span>'+
+      '<button class="copy" data-c="neg">Copy</button></div><pre class="neg" id="np">'+NEG+'</pre></div>'+
+    '<div class="qa"><div class="qt">QA checklist — §7.6</div>'+
+      QAITEMS.map(function(q,i){
+        return '<label><input type="checkbox" data-q="'+i+'" '+(S.qa[i]?'checked':'')+'>'+q+'</label>';
+      }).join('')+
+      '<button class="mark" id="mark" '+(done?'':'disabled')+'>'+(S.sel.done?'Marked built':'Mark plate built')+'</button></div>';
+
+  $('#obody').querySelectorAll('[data-mode]').forEach(function(b){ b.onclick=function(){S.mode=b.dataset.mode;output();}; });
+  $('#obody').querySelectorAll('[data-q]').forEach(function(b){
+    b.onchange=function(){ S.qa[b.dataset.q]=b.checked; output(); };
+  });
+  $('#obody').querySelectorAll('[data-c]').forEach(function(b){
+    b.onclick=function(){
+      var t=document.createElement('textarea');
+      t.value = b.dataset.c==='pos'?txt:NEG;
+      document.body.appendChild(t); t.select();
+      try{document.execCommand('copy');}catch(e){}
+      document.body.removeChild(t);
+      b.textContent='Copied'; b.classList.add('done');
+      setTimeout(function(){b.textContent='Copy';b.classList.remove('done');},1300);
+    };
+  });
+  var mk=$('#mark');
+  if(mk) mk.onclick=function(){ S.sel.done=true; rosterList(); output(); };
+}
+
+function render(){ rosterList(); editor(); output(); }
+$('#q').oninput=rosterList; $('#grpby').onchange=rosterList;
+$('#mcount').textContent=MODELS.length;
+render();
+})();
+</script>
+</body>
+</html>

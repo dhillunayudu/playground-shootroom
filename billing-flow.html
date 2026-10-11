@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shootroom — Billing and credits: how it connects</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bone:#F6F4F0; --bone-2:#EDEAE4; --bone-3:#E4E0D8; --ink:#0E0E0E;
+  --ink-70:rgba(14,14,14,.70); --ink-45:rgba(14,14,14,.45); --ink-22:rgba(14,14,14,.22);
+  --hair:rgba(14,14,14,.13); --P:#2F4A7A; --danger:#B4241F; --good:#3E7A4E;
+  --f:Manrope,system-ui,sans-serif; --m:'IBM Plex Mono',monospace;
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+html[data-theme="dark"]{
+  --bone:#14161A; --bone-2:#1C1F25; --bone-3:#252932; --ink:#E9E7E2;
+  --ink-70:rgba(233,231,226,.72); --ink-45:rgba(233,231,226,.46); --ink-22:rgba(233,231,226,.22);
+  --hair:rgba(233,231,226,.14); --P:#8AA0F0; --danger:#E0736A; --good:#5FA772;
+}
+html{color-scheme:light;} html[data-theme="dark"]{color-scheme:dark;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bone);color:var(--ink);font-family:var(--f);font-size:14px;-webkit-font-smoothing:antialiased;}
+button{background:none;border:0;cursor:pointer;font:inherit;color:inherit;}
+:focus-visible{outline:1.5px solid var(--P);outline-offset:2px;}
+.mono{font-family:var(--m);font-size:10px;letter-spacing:.06em;text-transform:uppercase;}
+.wrap{max-width:1180px;margin:0 auto;padding:36px 30px 90px;}
+
+.head{border-bottom:2px solid var(--ink);padding-bottom:18px;margin-bottom:28px;
+  display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;}
+.head .eb{color:var(--ink-45);}
+h1{font-weight:600;font-size:30px;letter-spacing:-.03em;margin-top:10px;line-height:1.1;}
+.lede{color:var(--ink-70);font-size:14px;line-height:1.65;max-width:66ch;margin-top:12px;}
+.tb{border:1px solid var(--hair);border-radius:7px;padding:8px 12px;font-family:var(--m);
+  font-size:9px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;}
+.tb:hover{border-color:var(--ink);}
+
+h2{font-family:var(--f);font-weight:600;font-size:10px;letter-spacing:.085em;text-transform:uppercase;
+  padding-bottom:9px;border-bottom:1px solid var(--hair);margin:44px 0 18px;}
+h2 span{color:var(--ink-45);text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:400;margin-left:12px;}
+p.note{color:var(--ink-70);font-size:13.5px;line-height:1.65;max-width:74ch;margin-bottom:16px;}
+p.note b{font-weight:600;color:var(--ink);}
+p.note code{font-family:var(--m);font-size:12px;background:var(--bone-2);padding:2px 5px;border-radius:4px;}
+
+/* ---- flow ---- */
+.flow{position:relative;overflow-x:auto;padding:6px 0 10px;}
+.lane{display:flex;align-items:stretch;gap:0;min-width:min-content;}
+.node{background:var(--bone-2);border:1px solid var(--hair);border-radius:11px;padding:14px 16px;
+  min-width:186px;flex:0 0 auto;position:relative;transition:.2s var(--ease);}
+.node:hover{border-color:var(--ink-45);transform:translateY(-2px);}
+.node.key{border-color:var(--P);box-shadow:0 0 0 1px var(--P);}
+.node.ext{border-style:dashed;background:transparent;}
+.node .t{font-family:var(--m);font-size:11.5px;font-weight:500;}
+.node .s{font-size:11.5px;color:var(--ink-45);margin-top:6px;line-height:1.5;}
+.node .f{font-family:var(--m);font-size:10px;color:var(--P);margin-top:9px;display:block;line-height:1.7;}
+.node .f b{color:var(--ink-45);font-weight:400;}
+.arrow{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:0 6px;min-width:96px;}
+.arrow .lbl{font-family:var(--m);font-size:9px;letter-spacing:.05em;color:var(--ink-45);
+  text-align:center;line-height:1.5;margin-bottom:5px;white-space:nowrap;}
+.arrow .ln{width:100%;height:1.5px;background:var(--ink-22);position:relative;}
+.arrow .ln::after{content:"";position:absolute;right:-1px;top:-3.5px;border-left:7px solid var(--ink-22);
+  border-top:4px solid transparent;border-bottom:4px solid transparent;}
+.arrow.hot .ln,.arrow.hot .ln::after{background:var(--P);border-left-color:var(--P);}
+.arrow.hot .lbl{color:var(--P);}
+
+.branch{display:grid;grid-template-columns:1fr;gap:26px;}
+.rowlab{font-family:var(--m);font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-45);margin-bottom:10px;display:flex;align-items:center;gap:9px;}
+.rowlab i{width:8px;height:8px;border-radius:2px;}
+
+.callout{border-left:2px solid var(--P);padding:2px 0 2px 14px;margin:18px 0;}
+.callout .h{font-family:var(--m);font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--P);font-weight:600;margin-bottom:6px;}
+.callout p{font-size:13px;color:var(--ink-70);line-height:1.6;max-width:72ch;}
+.callout.warn{border-left-color:var(--danger);}
+.callout.warn .h{color:var(--danger);}
+
+table{width:100%;border-collapse:collapse;margin:6px 0 10px;}
+th{text-align:left;font-family:var(--f);font-weight:600;font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-45);padding:0 14px 9px 0;border-bottom:1px solid var(--hair);}
+td{padding:11px 14px 11px 0;border-bottom:1px solid var(--hair);font-size:13px;vertical-align:top;}
+td.k{font-family:var(--m);font-size:11.5px;white-space:nowrap;}
+td.k b{color:var(--P);font-weight:500;}
+
+.steps{counter-reset:s;}
+.step{counter-increment:s;position:relative;padding:0 0 20px 40px;border-left:1px solid var(--hair);margin-left:12px;}
+.step:last-child{border-left-color:transparent;padding-bottom:0;}
+.step::before{content:counter(s,decimal-leading-zero);position:absolute;left:-13px;top:-2px;
+  width:26px;height:26px;border-radius:50%;background:var(--bone);border:1px solid var(--hair);
+  font-family:var(--m);font-size:9.5px;display:flex;align-items:center;justify-content:center;color:var(--ink-45);}
+.step .t{font-weight:600;font-size:14px;letter-spacing:-.02em;margin-bottom:6px;}
+.step .d{font-size:13px;color:var(--ink-70);line-height:1.6;max-width:70ch;}
+.step .d code{font-family:var(--m);font-size:11.5px;background:var(--bone-2);padding:2px 5px;border-radius:4px;}
+
+@media (max-width:760px){.wrap{padding:24px 18px 70px;}h1{font-size:24px;}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <div class="mono eb">Shootroom · schema reference</div>
+      <h1>Billing and credits: how it connects</h1>
+      <p class="lede">Two independent paths reach the payment provider. Recurring plans on one, one-off credit packs on the other. They share no join.</p>
+    </div>
+    <button class="tb" id="themeBtn">Dark</button>
+  </div>
+
+  <!-- ============ PATH A ============ -->
+  <h2>Path A — recurring<span>a client subscribes, credits release monthly</span></h2>
+
+  <div class="flow">
+    <div class="lane">
+      <div class="node">
+        <div class="t">Clients</div>
+        <div class="s">The tenant</div>
+      </div>
+      <div class="arrow"><span class="lbl">ClientId</span><span class="ln"></span></div>
+
+      <div class="node key">
+        <div class="t">Subscriptions</div>
+        <div class="s">Current state. One row for the whole life of the subscription</div>
+        <span class="f">PlanId<br>PlanPriceId<br><b>NextCreditReleaseAt</b></span>
+      </div>
+      <div class="arrow hot"><span class="lbl">PlanId</span><span class="ln"></span></div>
+
+      <div class="node key">
+        <div class="t">Plans</div>
+        <div class="s">Entitlements. What you get</div>
+        <span class="f"><b>MonthlyCredits</b><br>IncludedSeats<br>RolloverCapCredits</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow" style="margin-top:20px">
+    <div class="lane">
+      <div class="node" style="visibility:hidden"><div class="t">Clients</div></div>
+      <div class="arrow" style="visibility:hidden"><span class="ln"></span></div>
+
+      <div class="node key">
+        <div class="t">Subscriptions</div>
+        <div class="s">…the same row</div>
+      </div>
+      <div class="arrow hot"><span class="lbl">PlanPriceId</span><span class="ln"></span></div>
+
+      <div class="node key">
+        <div class="t">PlanPrices</div>
+        <div class="s">Price per currency, interval, and item type</div>
+        <span class="f">ItemType plan | seat<br>AmountMinor<br><b>StripePriceId</b></span>
+      </div>
+      <div class="arrow"><span class="lbl">points out to</span><span class="ln"></span></div>
+
+      <div class="node ext">
+        <div class="t">Stripe</div>
+        <div class="s">Owns the money. Charging always uses StripePriceId</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <div class="h">The join is PlanPriceId, never StripePriceId</div>
+    <p><code>StripePriceId</code> is a pointer <em>out</em> to the provider, not a join <em>within</em> the database. It is a VARCHAR with no foreign key, so joining on it gives no referential integrity — and if the provider ever changed, every such join would break. <code>PlanId</code> and <code>PlanPriceId</code> are yours.</p>
+  </div>
+
+  <div class="callout">
+    <div class="h">Credits live on Plans, not on PlanPrices</div>
+    <p>Studio grants 600 credits whether it is paid monthly in rupees or annually in dollars. The entitlement belongs to the plan; the price belongs to the currency and interval. Putting <code>MonthlyCredits</code> on <code>PlanPrices</code> would mean maintaining the same 600 across four rows until one of them drifted.</p>
+  </div>
+
+  <!-- ============ PATH B ============ -->
+  <h2>Path B — one-off<span>a client tops up without touching their plan</span></h2>
+
+  <div class="flow">
+    <div class="lane">
+      <div class="node">
+        <div class="t">Clients</div>
+        <div class="s">The tenant</div>
+      </div>
+      <div class="arrow"><span class="lbl">buys</span><span class="ln"></span></div>
+
+      <div class="node key">
+        <div class="t">CreditPacks</div>
+        <div class="s">A catalogue of one-off purchases. 50, 150, 500, 1500</div>
+        <span class="f">Credits<br>AmountMinor<br><b>StripePriceId</b></span>
+      </div>
+      <div class="arrow"><span class="lbl">points out to</span><span class="ln"></span></div>
+
+      <div class="node ext">
+        <div class="t">Stripe</div>
+        <div class="s">A different price object entirely</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="h">Packs do not route through Plans</div>
+    <p>Both <code>CreditPacks</code> and <code>PlanPrices</code> hold a <code>StripePriceId</code>, but they point at <b>different Stripe objects</b>. There is no join between them. A pack is a transaction, not a relationship — the client's connection to it is historical, through the ledger entry and the invoice, not structural through a subscription.</p>
+  </div>
+
+  <!-- ============ WHERE THEY MEET ============ -->
+  <h2>Where both paths meet<span>money goes to Invoices, credits go to the ledger</span></h2>
+
+  <p class="note">A payment produces <b>two records that must not be confused</b>. The invoice is what was billed and collected. The ledger entry is what the client can now spend. They are written by the same webhook and answer different questions.</p>
+
+  <div class="flow">
+    <div class="lane">
+      <div class="node ext">
+        <div class="t">Stripe</div>
+        <div class="s">Raises, taxes, renders and collects. Sends <code>invoice.paid</code></div>
+      </div>
+      <div class="arrow hot"><span class="lbl">webhook</span><span class="ln"></span></div>
+
+      <div class="node key">
+        <div class="t">StripeEvents</div>
+        <div class="s">Idempotency guard. Provider retries, so every event is recorded before it is acted on</div>
+        <span class="f"><b>StripeEventId</b> unique<br>ProcessedAt</span>
+      </div>
+      <div class="arrow"><span class="lbl">once only</span><span class="ln"></span></div>
+
+      <div class="node">
+        <div class="t">handler</div>
+        <div class="s">Writes both records in one transaction</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow" style="margin-top:18px">
+    <div class="lane">
+      <div class="node" style="visibility:hidden"><div class="t">x</div></div>
+      <div class="arrow" style="visibility:hidden"><span class="ln"></span></div>
+      <div class="node" style="visibility:hidden"><div class="t">x</div></div>
+      <div class="arrow"><span class="lbl">money</span><span class="ln"></span></div>
+
+      <div class="node key">
+        <div class="t">Invoices</div>
+        <div class="s">What was billed. The only source of revenue figures</div>
+        <span class="f">TotalMinor<br>TaxMinor<br>Status paid</span>
+      </div>
+      <div class="arrow"><span class="lbl">InvoiceId<br>on the period</span><span class="ln"></span></div>
+
+      <div class="node">
+        <div class="t">SubscriptionPeriods</div>
+        <div class="s">What they were subscribed to, and when</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow" style="margin-top:18px">
+    <div class="lane">
+      <div class="node" style="visibility:hidden"><div class="t">x</div></div>
+      <div class="arrow" style="visibility:hidden"><span class="ln"></span></div>
+      <div class="node" style="visibility:hidden"><div class="t">x</div></div>
+      <div class="arrow hot"><span class="lbl">credits</span><span class="ln"></span></div>
+
+      <div class="node key">
+        <div class="t">CreditLedger</div>
+        <div class="s">Append only. The authority for every balance. <code>InvoiceId</code> links the entry back to the payment that funded it</div>
+        <span class="f">PlanRelease · PackPurchase<br>RunReservation · RunCommit<br>RolloverCapped · Expiry</span>
+      </div>
+      <div class="arrow"><span class="lbl">same transaction</span><span class="ln"></span></div>
+
+      <div class="node">
+        <div class="t">CreditBalances</div>
+        <div class="s">Cache. Never written without a matching ledger row</div>
+        <span class="f">Balance<br>Reserved<br>Version</span>
+      </div>
+      <div class="arrow"><span class="lbl">monthly</span><span class="ln"></span></div>
+
+      <div class="node">
+        <div class="t">UsageSnapshots</div>
+        <div class="s">Answers "June" without aggregating</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="h">Revenue never comes from SubscriptionPeriods</div>
+    <p>The relationship is <b>many-to-one</b>, not one-to-one. A period may have no invoice — a trial or a paused stretch. An invoice may have no period — a credit pack. And a mid-period upgrade settles two periods on one prorated invoice. Summing <code>SubscriptionPeriods.TotalAmountMinor</code> double-counts upgrades and omits packs entirely. Revenue is <code>Invoices</code>, always.</p>
+  </div>
+
+  <div class="callout">
+    <div class="h">Ledger and balance are written together or not at all</div>
+    <p>A ledger row without a balance update leaves the cached number wrong. A balance update without a ledger row means credits moved with no explanation. One transaction, both writes, every time.</p>
+  </div>
+
+  <h2>Credits: every way they move<span>the twelve entry types</span></h2>
+
+  <table>
+    <thead><tr><th>Entry type</th><th>Delta</th><th>Written when</th><th>Links to</th></tr></thead>
+    <tbody>
+      <tr><td class="k"><b>TrialGrant</b></td><td>+</td><td>Account activated. No card, no provider record</td><td>—</td></tr>
+      <tr><td class="k"><b>PlanRelease</b></td><td>+</td><td>Monthly release job, on an active subscription</td><td>—</td></tr>
+      <tr><td class="k"><b>PackPurchase</b></td><td>+</td><td>A pack is paid for</td><td>InvoiceId</td></tr>
+      <tr><td class="k"><b>RunReservation</b></td><td>−</td><td>A run starts. Moves credits to Reserved</td><td>RunId</td></tr>
+      <tr><td class="k"><b>RunCommit</b></td><td>−</td><td>An image is delivered. This is the charge</td><td>RunId, RunImageId</td></tr>
+      <tr><td class="k"><b>RunRelease</b></td><td>+</td><td>An image failed. Never charged</td><td>RunId, RunImageId</td></tr>
+      <tr><td class="k"><b>Regeneration</b></td><td>−</td><td>A single image is regenerated</td><td>RunImageId</td></tr>
+      <tr><td class="k"><b>RolloverCapped</b></td><td>−</td><td>Carry-forward exceeded the plan cap</td><td>—</td></tr>
+      <tr><td class="k"><b>PauseExpiry</b></td><td>−</td><td>Pause allowance ran out without a resume</td><td>—</td></tr>
+      <tr><td class="k"><b>Expiry</b></td><td>−</td><td>Trial lapsed, or grace ended unpaid</td><td>—</td></tr>
+      <tr><td class="k"><b>AdminGrant</b></td><td>+</td><td>Goodwill or restoration. Reason mandatory</td><td>CreatedByStaffId</td></tr>
+      <tr><td class="k"><b>AdminDeduction</b></td><td>−</td><td>Correction. Reason mandatory</td><td>CreatedByStaffId</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">Every consumption entry carries <code>UserAccessId</code>, so "who spent 400 credits last week" is one grouped query — and that is also what enforces the per-member credit caps.</p>
+
+  <!-- ============ RELEASE JOB ============ -->
+  <h2>The monthly release<span>how credits actually arrive</span></h2>
+
+  <p class="note">The job never counts rows or replays history. <code>NextCreditReleaseAt</code> is a counter on the subscription; the job seeks on it and advances it.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="t">Find what is due</div>
+      <div class="d"><code>WHERE Status = 'active' AND NextCreditReleaseAt &lt;= NOW()</code> — a single index seek. Ten thousand subscriptions return only the handful due right now. Paused and past-due subscriptions are excluded: no payment, no credits.</div>
+    </div>
+    <div class="step">
+      <div class="t">Compute the carry-forward</div>
+      <div class="d">Carry is <code>min(current balance, Plans.RolloverCapCredits)</code>. Anything above the cap is written as its own <code>RolloverCapped</code> ledger entry, so the customer sees what lapsed rather than watching a number drop. Purchased pack credits are excluded from the cap — they were paid for separately.</div>
+    </div>
+    <div class="step">
+      <div class="t">Grant the allowance</div>
+      <div class="d">A <code>PlanRelease</code> entry for <code>Plans.MonthlyCredits</code>. Expiry is written <em>before</em> the grant, so the balance is never briefly over the cap.</div>
+    </div>
+    <div class="step">
+      <div class="t">Advance the counter</div>
+      <div class="d"><code>NextCreditReleaseAt += 1 month</code>, and on an annual plan <code>ReleasesRemaining -= 1</code>. Idempotent on subscription and release month, so a retried job cannot double-credit.</div>
+    </div>
+  </div>
+
+  <!-- ============ ANNUAL VS MONTHLY ============ -->
+  <h2>Annual and monthly, side by side<span>Studio, 600 credits a month</span></h2>
+
+  <table>
+    <thead><tr><th>Field</th><th>Monthly · ₹7,900/mo</th><th>Annual · ₹75,800 once</th></tr></thead>
+    <tbody>
+      <tr><td class="k">IntervalUnit</td><td>month</td><td>year</td></tr>
+      <tr><td class="k">CurrentPeriodStart</td><td>12 Aug 2026</td><td>12 Aug 2026</td></tr>
+      <tr><td class="k">CurrentPeriodEnd</td><td>12 Sep 2026 — moves monthly</td><td><b>12 Aug 2027</b> — moves yearly</td></tr>
+      <tr><td class="k"><b>NextCreditReleaseAt</b></td><td>12 Sep 2026</td><td><b>12 Sep 2026</b> — still monthly</td></tr>
+      <tr><td class="k">ReleasesRemaining</td><td>—</td><td>12, counting down</td></tr>
+      <tr><td class="k">Invoices raised</td><td>12 a year</td><td>1 a year</td></tr>
+      <tr><td class="k">PlanRelease entries</td><td>12 a year</td><td>12 a year</td></tr>
+      <tr><td class="k">SubscriptionPeriods</td><td>12 rows a year</td><td>1 row a year</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <div class="h">Why the two dates are separate</div>
+    <p>The billing period and the credit release schedule are different things. An annual customer pays once and receives credits twelve times. Collapsing them into one field would either hand over a year of compute on day one, or starve an annual customer for eleven months.</p>
+  </div>
+
+  <!-- ============ RENEWALS ============ -->
+  <h2>Renewals do not create rows<span>one subscription, many periods</span></h2>
+
+  <table>
+    <thead><tr><th>Table</th><th>Lifespan</th><th>What it answers</th></tr></thead>
+    <tbody>
+      <tr><td class="k"><b>Subscriptions</b></td><td>One row, forever</td><td>What are they on <em>now</em>? When did they first subscribe?</td></tr>
+      <tr><td class="k"><b>SubscriptionPeriods</b></td><td>One row per billing cycle</td><td>What plan were they on in June? What did they pay last year? When did they upgrade?</td></tr>
+      <tr><td class="k"><b>Invoices</b></td><td>One row per charge</td><td>What was actually billed and collected?</td></tr>
+      <tr><td class="k"><b>CreditLedger</b></td><td>One row per movement</td><td>Where did every credit come from and go?</td></tr>
+      <tr><td class="k"><b>UsageSnapshots</b></td><td>One row per client per month</td><td>How much did they use in June, without aggregating anything?</td></tr>
+      <tr><td class="k"><b>CreditBalances</b></td><td>One row per client</td><td>What can they spend right now? Rebuildable from the ledger</td></tr>
+      <tr><td class="k"><b>StripeEvents</b></td><td>One row per provider event</td><td>Did we already process this? Guards against retries</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">A renewal moves <code>CurrentPeriodStart</code> and <code>CurrentPeriodEnd</code> forward on the existing row and writes a new <code>SubscriptionPeriods</code> child. An upgrade mid-period closes the current child as <b>superseded</b> and opens a new one, so the record of what was charged survives the change.</p>
+
+  <h2>Worked question<span>"which invoice covers August for this client?"</span></h2>
+
+  <p class="note">Not by filtering invoices on date. An invoice raised on 12 August covers 12 Aug to 12 Sep — partly August, partly September — and a credit pack bought on 20 August produces an August invoice that is not a subscription invoice at all.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="t">Find the period that spans the month</div>
+      <div class="d"><code>SubscriptionPeriods WHERE ClientId = ? AND PeriodStart &lt;= '2026-08-31' AND PeriodEnd &gt;= '2026-08-01'</code></div>
+    </div>
+    <div class="step">
+      <div class="t">Read its InvoiceId</div>
+      <div class="d">That is the subscription invoice covering August. Null means the period was never invoiced — a trial, or a paused stretch.</div>
+    </div>
+    <div class="step">
+      <div class="t">For everything billed in August instead</div>
+      <div class="d"><code>Invoices WHERE ClientId = ? AND IssuedAt IN August</code> — this includes credit packs and seat prorations, which belong to no period. A different question, and the only correct one for revenue.</div>
+    </div>
+  </div>
+
+  <h2>Reading this later<span>the three rules worth remembering</span></h2>
+  <p class="note"><b>One.</b> Join on your own keys — <code>PlanId</code>, <code>PlanPriceId</code>. Provider identifiers point outward only.</p>
+  <p class="note"><b>Two.</b> Entitlements sit on <code>Plans</code>; prices sit on <code>PlanPrices</code>. Never duplicate an entitlement across price rows.</p>
+  <p class="note"><b>Three.</b> The ledger is the authority. <code>CreditBalances</code> is a cache and <code>UsageSnapshots</code> is a summary; both are rebuildable, neither is truth.</p>
+</div>
+
+<script>
+(function(){
+  var b=document.getElementById('themeBtn');
+  function set(m){
+    document.documentElement.setAttribute('data-theme',m);
+    b.textContent = m==='dark' ? 'Light' : 'Dark';
+    try{ localStorage.setItem('sr_theme',m); }catch(e){}
+  }
+  var st=null; try{ st=localStorage.getItem('sr_theme'); }catch(e){}
+  set(st || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light'));
+  b.onclick=function(){ set(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'); };
+})();
+</script>
+</body>
+</html>
