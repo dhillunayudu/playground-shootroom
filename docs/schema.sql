@@ -1065,18 +1065,31 @@ CREATE TABLE Models (
   Id                      CHAR(26)     NOT NULL,
   Code                    VARCHAR(20)  NOT NULL,      -- 'bm_014'
   DisplayName             VARCHAR(120) NULL,
+  -- Gender is a column, not only a tag: it is one of the three gates every
+  -- shoot applies (segment pairing, gender, base cut) and is single-valued.
+  Gender                  ENUM('female','male') NOT NULL,
+  -- Status = is the model usable at all. Availability (below) = who may use it.
   Status                  ENUM('draft','approved','retired') NOT NULL DEFAULT 'draft',
-  StoragePrefix           VARCHAR(300) NOT NULL,      -- /models/{Code}/
-  VocabularyVersion       VARCHAR(20)  NOT NULL,
-  PromptTemplateId        CHAR(26)     NULL,
-  GenerationSeed          VARCHAR(80)  NULL,          -- reproducibility, PRD T5
+  StoragePrefix           VARCHAR(300) NOT NULL,      -- /models/{Code}/ — one folder for all its images
+  VocabularyVersion       VARCHAR(20)  NOT NULL,      -- re-tagging is audited (PRD ID7)
+  -- PRD §7.9: identity is held by the reference image; the seed is optional
+  -- and meaningless without the provider and model version beside it (ID4).
+  ReferenceImageUri       VARCHAR(500) NULL,          -- approved hero portrait; required before plates (ID1)
+  GenerationSeed          VARCHAR(40)  NULL,          -- of the hero portrait, where the provider supports one
+  GeneratorProvider       VARCHAR(40)  NULL,          -- 'fal-flux','vertex-imagen','gemini-image'
+  GeneratorModelVersion   VARCHAR(80)  NULL,
   -- FRD §6.1 Availability
-  Availability            ENUM('shared','reserved','exclusive','cooling','retired')
+  -- Mirror of the ACTIVE ModelBookings row, for fast browse filtering.
+  -- ModelBookings is the source of truth; these columns are written in the
+  -- same transaction as the booking change and never on their own.
+  Availability            ENUM('shared','reserved','exclusive','cooling')
                         NOT NULL DEFAULT 'shared',
   ReservedToClientId      CHAR(26)     NULL,
   ReservedFrom            DATETIME(3)  NULL,
   ReservedUntil           DATETIME(3)  NULL,
   CoolingUntil            DATETIME(3)  NULL,
+  -- Runs, not images. Recomputed from Runs by a scheduled job — never
+  -- incremented inside a shoot, or a popular shared model becomes a hot row (ID6).
   UsageCount              INT          NOT NULL DEFAULT 0,
   LastUsedAt              DATETIME(3)  NULL,
   ApprovedBy              CHAR(26)     NULL,
@@ -1087,13 +1100,15 @@ CREATE TABLE Models (
   UNIQUE KEY UX_Models_Code (Code),
   -- FR-CAST-08: browse Filters on (Status, Availability, ReservedToClientId)
   KEY IX_Models_StatusAvailabilityReservedToClientId (Status, Availability, ReservedToClientId),
-  KEY IX_Models_AvailabilityCoolingUntil (Availability, CoolingUntil)
+  KEY IX_Models_AvailabilityCoolingUntil (Availability, CoolingUntil),
+  KEY IX_Models_GenderStatus (Gender, Status),
+  CONSTRAINT FK_Models_ReservedToClientId FOREIGN KEY (ReservedToClientId) REFERENCES Clients(Id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Controlled vocabulary, PRD §7.2. Owned by us, versioned.
 CREATE TABLE AttributeVocabulary (
   Id                      CHAR(26)     NOT NULL,
-  Namespace               VARCHAR(40)  NOT NULL,          -- 'identity','Body','skin'
+  Namespace               VARCHAR(40)  NOT NULL,          -- 'identity','body','skin'
   AttrKey                 VARCHAR(60)  NOT NULL,
   AttrValue               VARCHAR(120) NOT NULL,
   Label                   VARCHAR(120) NOT NULL,
@@ -1173,6 +1188,13 @@ CREATE TABLE Plates (
                                'full') NOT NULL,
   PoseId                  CHAR(26)     NOT NULL,
   ImageUri                VARCHAR(500) NOT NULL,
+  -- PRD §7.9.4: exactly what produced this image (ID3)
+  Prompt                  TEXT         NULL,
+  NegativePrompt          TEXT         NULL,
+  Seed                    VARCHAR(40)  NULL,          -- normally the model's; may be overridden per pose
+  GeneratorProvider       VARCHAR(40)  NULL,
+  GeneratorModelVersion   VARCHAR(80)  NULL,
+  ReferenceImageUri       VARCHAR(500) NULL,          -- the reference it was generated from
   QaStatus                ENUM('pending','passed','failed') NOT NULL DEFAULT 'pending',
   QaNotes                 TEXT         NULL,
   GeneratedBy             CHAR(26)     NULL,              -- studio_operator
@@ -1204,6 +1226,7 @@ CREATE TABLE PlateVariantRenders (
   PlateId                 CHAR(26)     NOT NULL,
   PlateVariantId          CHAR(26)     NOT NULL,
   ImageUri                VARCHAR(500) NOT NULL,
+  Prompt                  TEXT         NULL,          -- final inpaint prompt sent for this combination
   HitCount                INT          NOT NULL DEFAULT 0,
   CreatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   LastUsedAt              DATETIME(3)  NULL,

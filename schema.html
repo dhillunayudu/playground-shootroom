@@ -323,10 +323,10 @@ T('ProductImages','product','Per colourway. Front is required and dresses most p
   'ModerationStatus|ENUM']),
 
 /* ---- library ---- */
-T('Models','library','Global, not tenant-owned. account_id appears only through reservation.',
- ['Id|CHAR(26)|p','Code|VARCHAR(20)','DisplayName|VARCHAR|n','Status|ENUM','StoragePrefix|VARCHAR',
-  'VocabularyVersion|VARCHAR','GenerationSeed|VARCHAR|n','Availability|ENUM',
-  'ReservedToClientId|CHAR(26)|n','ReservedFrom|DATETIME|n','ReservedUntil|DATETIME|n',
+T('Models','library','One synthetic person — each variant in a roster cell is its own row. Global, not tenant-owned; a client appears only through a booking, mirrored here from ModelBookings. Identity is held by ReferenceImageUri; the seed is optional (PRD 7.9).',
+ ['Id|CHAR(26)|p','Code|VARCHAR(20)','DisplayName|VARCHAR|n','Gender|ENUM','Status|ENUM','StoragePrefix|VARCHAR',
+  'VocabularyVersion|VARCHAR','ReferenceImageUri|VARCHAR|n','GenerationSeed|VARCHAR|n','GeneratorProvider|VARCHAR|n','GeneratorModelVersion|VARCHAR|n','Availability|ENUM',
+  'ReservedToClientId|CHAR(26)|fn','ReservedFrom|DATETIME|n','ReservedUntil|DATETIME|n',
   'CoolingUntil|DATETIME|n','UsageCount|INT','ApprovedBy|CHAR(26)|n','ApprovedAt|DATETIME|n']),
 T('AttributeVocabulary','library','Controlled vocabulary. Drives the filter rail, the prompt and the coverage dashboard.',
  ['Id|CHAR(26)|p','Namespace|VARCHAR(40)','AttrKey|VARCHAR(60)','AttrValue|VARCHAR(120)',
@@ -344,10 +344,11 @@ T('PlateVariants','library','What the model wears on the half that is not being 
   'BundledFootwear|VARCHAR|n','InpaintPrompt|TEXT|n','NegativePrompt|TEXT|n','IsActive|TINYINT']),
 T('Plates','library','Approved canonical plates. generated_by must differ from approved_by.',
  ['Id|CHAR(26)|p','ModelId|CHAR(26)|f','PlateType|ENUM','BaseCut|ENUM','PoseId|CHAR(26)|f','ImageUri|VARCHAR(500)',
+  'Prompt|TEXT|n','NegativePrompt|TEXT|n','Seed|VARCHAR|n','GeneratorProvider|VARCHAR|n','GeneratorModelVersion|VARCHAR|n','ReferenceImageUri|VARCHAR|n',
   'QaStatus|ENUM','QaNotes|TEXT|n','GeneratedBy|CHAR(26)|n','ApprovedBy|CHAR(26)|n','ApprovedAt|DATETIME|n']),
 T('PlateVariantRenders','library','Stage-02 cache. Key is model + plate type + plate variant + pose.',
  ['Id|CHAR(26)|p','CacheKey|VARCHAR(120)','PlateId|CHAR(26)|f','PlateVariantId|CHAR(26)|f',
-  'ImageUri|VARCHAR(500)','HitCount|INT','LastUsedAt|DATETIME|n']),
+  'ImageUri|VARCHAR(500)','Prompt|TEXT|n','HitCount|INT','LastUsedAt|DATETIME|n']),
 T('ModelFavourites','library','Per member, per Clients.',
  ['ClientId|CHAR(26)|p','ModelId|CHAR(26)|pf','UserAccessId|CHAR(26)|p','CreatedAt|DATETIME']),
 T('ModelBookings','library','Brand cast. Runs with the subscription, then a 90-day cooling period.',
@@ -400,7 +401,7 @@ T('AuditLogs','ops','Every actor — members, staff and system jobs. Append only
 /* Tables reviewed and finalised. Add a name here as each is signed off. */
 var REVIEWED=['Clients','Users','UserAccess','Invitations','AuthTokens','Sessions',
               'StaffUsers','StaffRoles','ClientSettings','NotificationPreferences','Plans','PlanPrices','Subscriptions',
-              'SubscriptionPeriods','UsageSnapshots','CreditPacks','CreditLedger','CreditBalances','Invoices','BillingProfiles','StripeEvents','ClientUsage','Brands','Segments','Categories','SubCategories','SegmentModels','ClientEntitlements','Colours','Fabrics','Seasons','SizeSets','AuditLogs'];
+              'SubscriptionPeriods','UsageSnapshots','CreditPacks','CreditLedger','CreditBalances','Invoices','BillingProfiles','StripeEvents','ClientUsage','Brands','Segments','Categories','SubCategories','SegmentModels','ClientEntitlements','Colours','Fabrics','Seasons','SizeSets','AuditLogs','Models'];
 var isDone=function(n){ return REVIEWED.indexOf(n)>-1; };
 
 /* ============ relationships ============ */
@@ -464,6 +465,7 @@ var R=[
  ['ModelFavourites','ModelId','Models','Id'],
  ['ModelBookings','ClientId','Clients','Id'],
  ['ModelBookings','ModelId','Models','Id'],
+ ['Models','ReservedToClientId','Clients','Id'],
  ['CastingRequests','ClientId','Clients','Id'],
  ['CastingRequests','FulfilledModelId','Models','Id'],
  ['ShootConfigurations','ClientId','Clients','Id'],
