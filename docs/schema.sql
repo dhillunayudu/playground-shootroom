@@ -913,10 +913,12 @@ CREATE TABLE Products (
   CONSTRAINT FK_Products_SizeSetId FOREIGN KEY (SizeSetId) REFERENCES SizeSets(Id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Colourways. Products is the STYLE; each colour it comes in is one row here.
+-- Colourways. Products is the STYLE; each colourway it comes in is one row here.
+-- A colourway is a COLOUR plus, optionally, a PRINT/PATTERN: navy solid, navy
+-- floral and navy stripe are three colourways of one style.
 -- Every product has at least one variant: a single-colour product is a product
 -- with one variant, so nothing downstream needs a "no variants" special case.
--- Variants are by COLOUR only — sizes need no imagery of their own and stay on
+-- Variants are by colour and pattern only — sizes need no imagery and stay on
 -- Products.SizeSetId. Everything that decides the plate (segment, gender,
 -- sub-category, base cut) is on the style, so all colours shoot on the same
 -- plates and the same eligible models.
@@ -925,6 +927,13 @@ CREATE TABLE ProductVariants (
   ClientId                CHAR(26)     NOT NULL,
   ProductId               CHAR(26)     NOT NULL,
   ColourId                CHAR(26)     NOT NULL,
+  PatternTagId            CHAR(26)     NULL,       -- a Tags row of Kind='pattern' that is mapped to
+                                                   -- the product's sub-category (app-enforced).
+                                                   -- NULL = solid. Feeds the generation prompt
+  -- colour + pattern identity, so the unique key treats "no pattern" as a value
+  -- (a plain unique on a NULL column would allow two solid navys)
+  ColourwayKey            VARCHAR(60) GENERATED ALWAYS AS
+                          (CONCAT(ColourId, ':', IFNULL(PatternTagId, 'solid'))) STORED,
   Sku                     VARCHAR(80)  NULL,       -- optional colour SKU. NULL = the style code
                                                    -- identifies it (one SKU per style catalogues).
                                                    -- NULLs do not collide in the unique key
@@ -939,13 +948,14 @@ CREATE TABLE ProductVariants (
   UpdatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   DeletedAt               DATETIME(3)  NULL,
   PRIMARY KEY (Id),
-  UNIQUE KEY UX_ProductVariants_ProductIdColourId (ProductId, ColourId),   -- a colour once per style
+  UNIQUE KEY UX_ProductVariants_ProductIdColourwayKey (ProductId, ColourwayKey),  -- a colourway once per style
   UNIQUE KEY UX_ProductVariants_ClientIdSku (ClientId, Sku),
   KEY IX_ProductVariants_ClientIdProductId (ClientId, ProductId),
   KEY IX_ProductVariants_ClientIdColourId (ClientId, ColourId),
   CONSTRAINT FK_ProductVariants_ClientId FOREIGN KEY (ClientId) REFERENCES Clients(Id),
   CONSTRAINT FK_ProductVariants_ProductId FOREIGN KEY (ProductId) REFERENCES Products(Id),
-  CONSTRAINT FK_ProductVariants_ColourId FOREIGN KEY (ColourId) REFERENCES Colours(Id)
+  CONSTRAINT FK_ProductVariants_ColourId FOREIGN KEY (ColourId) REFERENCES Colours(Id),
+  CONSTRAINT FK_ProductVariants_PatternTagId FOREIGN KEY (PatternTagId) REFERENCES Tags(Id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- GLOBAL AND SUPER-ADMIN OWNED, not client master data.

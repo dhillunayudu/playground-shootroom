@@ -552,13 +552,13 @@ var SUBTAGS={
 };
 
 var PRODUCTS=[
- {id:'p1',back:1,n:'Cotton Straight Kurta',sku:'KUR-1042',cols:[{c:'Ivory',sku:'KUR-1042-IVR',front:1,back:1,shoots:2},{c:'Sage',sku:'KUR-1042-SAG',front:1,back:1,shoots:0},{c:'Mustard',sku:'KUR-1042-MUS',front:1,back:0,shoots:0}],seg:'sg_eth',gender:'F',cat:'Kurta',sub:'Kurta',fit:'Regular',colour:'Ivory',tint:'#E6E1D6',shoots:2,status:'Active',tags:['Full sleeves','Round neck']},
+ {id:'p1',back:1,n:'Cotton Straight Kurta',sku:'KUR-1042',cols:[{c:'Ivory',sku:'KUR-1042-IVR',front:1,back:1,shoots:2},{c:'Sage',sku:'KUR-1042-SAG',front:1,back:1,shoots:0},{c:'Mustard',pat:'Block print',sku:'KUR-1042-MBP',front:1,back:0,shoots:0}],seg:'sg_eth',gender:'F',cat:'Kurta',sub:'Kurta',fit:'Regular',colour:'Ivory',tint:'#E6E1D6',shoots:2,status:'Active',tags:['Full sleeves','Round neck']},
  {id:'p2',back:1,n:'Indigo Straight Jeans',sku:'JN-2210',seg:'sg_ff',gender:'M',cat:'Jeans',sub:'Jeans',fit:'Regular',colour:'Indigo',tint:'#8E9CB4',shoots:1,status:'Active',tags:['Mid rise','5 pocket']},
  {id:'p3',back:0,n:'Terracotta Midi Dress',sku:'DR-3391',seg:'sg_occ',gender:'F',cat:'Dress',sub:'Dress',fit:'Relaxed',colour:'Terracotta',tint:'#D0A48E',shoots:0,status:'Active',tags:['Sleeveless','V neck']},
  {id:'p4',back:1,n:'Sage Linen Shirt',sku:'SH-1188',seg:'sg_ff',gender:'M',cat:'Shirt',sub:'Shirt',fit:'Relaxed',colour:'Sage',tint:'#C3CBB6',shoots:0,status:'Active',tags:['Full sleeves','Collar']},
  {id:'p5',back:1,n:'Black Tailored Trousers',sku:'TR-4402',seg:'sg_ff',gender:'M',cat:'Trousers',sub:'Trousers',fit:'Slim',colour:'Black',tint:'#9A9A9E',shoots:3,status:'Active',tags:['Mid rise','Pleated']},
  {id:'p6',back:0,n:'Mustard Co-ord Set',sku:'CO-5510',seg:'sg_occ',gender:'F',cat:'Co-ord set',sub:'Co-ord set',fit:'Regular',colour:'Mustard',tint:'#DFC489',shoots:0,status:'Draft',tags:['Half sleeves']},
- {id:'p7',back:0,n:'Cotton Crew Tee',sku:'TS-0091',cols:[{c:'Rust',sku:null,front:1,back:0,shoots:0},{c:'Black',sku:null,front:1,back:1,shoots:0},{c:'White',sku:null,front:0,back:0,shoots:0}],seg:'sg_ff',gender:'M',cat:'T-shirt',sub:'Plain T-shirt',fit:'Slim',colour:'Rust',tint:'#D4A896',shoots:0,status:'Active',tags:['Half sleeves','Round neck']},
+ {id:'p7',back:0,n:'Cotton Crew Tee',sku:'TS-0091',cols:[{c:'Rust',sku:null,front:1,back:0,shoots:0},{c:'Black',sku:null,front:1,back:1,shoots:0},{c:'Black',pat:'Stripe',sku:null,front:1,back:0,shoots:0},{c:'White',sku:null,front:0,back:0,shoots:0}],seg:'sg_ff',gender:'M',cat:'T-shirt',sub:'Plain T-shirt',fit:'Slim',colour:'Rust',tint:'#D4A896',shoots:0,status:'Active',tags:['Half sleeves','Round neck']},
  {id:'p8',back:0,n:'Blush Ribbed Crop Top',sku:'CT-7720',seg:'sg_ff',gender:'F',cat:'T-shirt',sub:'Crop top',fit:'Slim',colour:'Blush',tint:'#E3C4BC',shoots:0,status:'Active',tags:['Half sleeves','Round neck']}
 ];
 // Colourways. Every product has at least one; a single-colour product is a
@@ -568,15 +568,20 @@ var PRODUCTS=[
 var COLHEX={}; MASTER.colours.rows.forEach(function(r){COLHEX[r[0]]=r[1];});
 function lighten(h,a){ var n=parseInt(h.slice(1),16),r=n>>16,g=n>>8&255,b=n&255;
   function m(c){return Math.round(c+(255-c)*a);} return '#'+((1<<24)+(m(r)<<16)+(m(g)<<8)+m(b)).toString(16).slice(1); }
-function tintOf(c){ return lighten(COLHEX[c]||'#C8C2B8',.5); }
+function baseOf(l){ return String(l).split(' · ')[0]; }
+function patOf(l){ var x=String(l).split(' · '); return x[1]||'Solid'; }
+function cwLabel(c,pat){ return (!pat||pat==='Solid')?c:c+' · '+pat; }
+function hexOf(l){ return COLHEX[baseOf(l)]||'#C8C2B8'; }
+function tintOf(c){ return lighten(hexOf(c),.5); }
 PRODUCTS.forEach(function(p){
   if(!p.cols) p.cols=[{c:p.colour,sku:null,front:1,back:p.back,shoots:p.shoots}];
-  p.cols.forEach(function(v){ v.tint = (v.c===p.colour && p.tint) ? p.tint : tintOf(v.c); });
+  p.cols.forEach(function(v){ v.base=v.c; v.pat=v.pat||'Solid'; v.c=cwLabel(v.base,v.pat);
+    v.tint = (v.base===p.colour && v.pat==='Solid' && p.tint) ? p.tint : tintOf(v.c); });
   p.colour=p.cols[0].c; p.tint=p.cols[0].tint;
 });
 function colOf(p,c){ return p.cols.filter(function(v){return v.c===c;})[0]; }
-function swatches(p){ return '<span class="dots">'+p.cols.map(function(v){return '<i class="dot" title="'+v.c+'" style="background:'+(COLHEX[v.c]||v.tint)+'"></i>';}).join('')+'</span>'; }
-function colLabel(p){ return p.cols.length>1 ? p.cols.length+' colours' : p.cols[0].c; }
+function swatches(p){ return '<span class="dots">'+p.cols.map(function(v){return '<i class="dot" title="'+v.c+'" style="background:'+(hexOf(v.c)||v.tint)+'"></i>';}).join('')+'</span>'; }
+function colLabel(p){ return p.cols.length>1 ? p.cols.length+' colourways' : p.cols[0].c; }
 function cutOf(p){ return SUBCATS[p.sub]||'full'; }
 function plateOf(p){ return CUTS[cutOf(p)].plate; }
 function segOf(id){ return SEGMENTS.filter(function(x){return x.id===id;})[0]||{n:'—'}; }
@@ -873,6 +878,8 @@ function newproduct(){
   if(d.acol && d.cols.indexOf(d.acol)<0) d.acol=null;
   if(!d.acol && d.cols.length) d.acol=d.cols[0];
   function hasImg(c,r){ return !!(d.img[c]&&d.img[c][r]); }
+  var PATS = d.sub ? ((SUBTAGS[d.sub]||{}).pattern||['Solid']) : ['Solid'];
+  if(PATS.indexOf('Solid')<0) PATS=['Solid'].concat(PATS);
   var fronts=d.cols.filter(function(c){return hasImg(c,'front');}).length,
       backs=d.cols.filter(function(c){return hasImg(c,'back');}).length;
   var sub = d.sub, cut = sub ? SUBCATS[sub] : null, cutInfo = cut ? CUTS[cut] : null;
@@ -952,22 +959,26 @@ function newproduct(){
     '</div>'+
 
     '<div class="sec"><div class="sec-h"><span class="l">Colours <span class="req" style="color:var(--danger)">*</span></span>'+
-      '<span class="a">'+(d.cols.length?d.cols.length+' selected · each needs a front image':'Pick every colour this style comes in')+'</span></div>'+
-      '<p class="hint" style="margin:-6px 0 14px">Each colour is shot from its own garment photo. The try-on dresses the model in exactly the image it is given, so a red photo can only ever produce a red garment.</p>'+
+      '<span class="a">'+(d.cols.length?d.cols.length+' colourway'+(d.cols.length>1?'s':'')+' · each needs a front image':'Pick every colour this style comes in')+'</span></div>'+
+      '<p class="hint" style="margin:-6px 0 14px">A colourway is a colour plus, if it has one, a print or pattern. Each is shot from its own garment photo — the try-on dresses the model in exactly the image it is given, so a red floral photo can only produce a red floral garment.</p>'+
       '<div class="chips">'+mdActive('colours').map(function(c){
-        var on=d.cols.indexOf(c[0])>-1;
+        var on=d.cols.some(function(x){return baseOf(x)===c[0];});
         return '<button class="chip'+(on?' on':'')+'" data-dcol="'+c[0]+'"><i class="dot" style="background:'+c[1]+';margin-right:8px"></i>'+c[0]+'</button>';
       }).join('')+'</div>'+
       (d.cols.length
-        ? '<table class="ctbl" style="margin-top:16px"><thead><tr><th>Colour</th><th>SKU <span style="font-weight:400;text-transform:none;letter-spacing:0">· optional</span></th><th>Front</th><th>Back</th><th></th></tr></thead><tbody>'+
+        ? '<table class="ctbl" style="margin-top:16px"><thead><tr><th>Colour</th><th>Pattern</th><th>SKU <span style="font-weight:400;text-transform:none;letter-spacing:0">· optional</span></th><th>Front</th><th>Back</th><th></th></tr></thead><tbody>'+
           d.cols.map(function(c){
-            return '<tr'+(d.acol===c?' style="background:var(--Pt)"':'')+'><td><button class="ctab'+(d.acol===c?' on':'')+'" data-dacol="'+c+'" style="border:0;background:none;padding:0"><i class="dot" style="background:'+COLHEX[c]+'"></i>'+c+'</button></td>'+
-              '<td><input class="inp" placeholder="e.g. KUR-1042-'+c.slice(0,3).toUpperCase()+'"></td>'+
+            var used=d.cols.filter(function(x){return baseOf(x)===baseOf(c)&&x!==c;}).map(patOf);
+            return '<tr'+(d.acol===c?' style="background:var(--Pt)"':'')+'><td><button class="ctab'+(d.acol===c?' on':'')+'" data-dacol="'+c+'" style="border:0;background:none;padding:0"><i class="dot" style="background:'+hexOf(c)+'"></i>'+baseOf(c)+'</button></td>'+
+              '<td><select class="inp" data-dpat="'+c+'"'+(sub?'':' disabled title="Choose a sub-category first"')+'>'+PATS.map(function(pt){
+                return '<option'+(patOf(c)===pt?' selected':'')+(used.indexOf(pt)>-1?' disabled':'')+'>'+pt+'</option>';}).join('')+'</select></td>'+
+              '<td><input class="inp" placeholder="e.g. KUR-1042-'+baseOf(c).slice(0,3).toUpperCase()+(patOf(c)==='Solid'?'':patOf(c).slice(0,1).toUpperCase())+'"></td>'+
               '<td>'+(hasImg(c,'front')?'<span class="tag ok">Added</span>':'<span class="tag" style="color:var(--danger)">Missing</span>')+'</td>'+
               '<td>'+(hasImg(c,'back')?'<span class="tag ok">Added</span>':'<span class="tag mute">None</span>')+'</td>'+
-              '<td style="text-align:right"><button class="btn gh sm" data-dacol="'+c+'">Images</button></td></tr>';
+              '<td style="text-align:right;white-space:nowrap"><button class="btn gh sm" data-dacol="'+c+'">Images</button>'+
+              (sub && used.length+1<PATS.length?' <button class="btn gh sm" data-dvdup="'+c+'" title="Same colour in another print or pattern">+ Pattern</button>':'')+'</td></tr>';
           }).join('')+'</tbody></table>'+
-          '<p class="hint" style="margin-top:10px">Leave SKU blank if you use one code for the whole style. Sizes are not colours — they stay on the size set.</p>'
+          '<p class="hint" style="margin-top:10px">Patterns offered are the ones mapped to <b>'+(sub||'the sub-category')+'</b>. Use <b>+ Pattern</b> when the same colour comes in more than one print. Leave SKU blank if you use one code for the whole style.</p>'
         : '<div class="empty" style="padding:26px 0"><b>No colours yet</b><p>Pick at least one. A single-colour product is just a product with one colour.</p></div>')+
     '</div>'+
 
@@ -990,15 +1001,15 @@ function newproduct(){
           'The mapping is maintained by Shootroom, because these feed the generation prompt — a polo offers a collar, not a floor length.</p>'+
           (function(){
             var map=SUBTAGS[sub]||{};
-            var kinds=Object.keys(TAGS).filter(function(k){return (map[k]||[]).length;});
+            var kinds=Object.keys(TAGS).filter(function(k){return k!=='pattern' && (map[k]||[]).length;});
             if(!kinds.length) return '<div class="empty" style="padding:26px 0"><b>No tags mapped</b><p>This sub-category has no tag mapping yet.</p></div>';
             return kinds.map(function(k){
               return '<div class="fld"><label>'+KINDLABEL[k]+'</label>'+chips(map[k], d.tags, 'data-dtag')+'</div>';
             }).join('')+
             '<p class="hint" style="margin-top:4px">'+
             kinds.reduce(function(a,k){return a+map[k].length;},0)+' of '+
-            Object.keys(TAGS).reduce(function(a,k){return a+TAGS[k].length;},0)+
-            ' tags apply here. The rest are hidden rather than greyed — a list of things you cannot pick reads as broken.</p>';
+            Object.keys(TAGS).filter(function(k){return k!=='pattern';}).reduce(function(a,k){return a+TAGS[k].length;},0)+
+            ' tags apply here. The rest are hidden rather than greyed — a list of things you cannot pick reads as broken. Pattern is set per colourway, above.</p>';
           })()
         : '<div class="empty" style="padding:34px 0"><b>Tags depend on the garment</b>'+
           '<p>Choose a category and sub-category above and only the tags that apply will be offered.</p></div>')+
@@ -1010,7 +1021,7 @@ function newproduct(){
       (!d.cols.length
         ? '<div class="empty" style="padding:22px 0"><b>Pick a colour first</b><p>Images belong to a colour, not the style.</p></div>'
         : (d.cols.length>1?'<div class="ctabs">'+d.cols.map(function(c){
-            return '<button class="ctab'+(d.acol===c?' on':'')+'" data-dacol="'+c+'"><i class="dot" style="background:'+COLHEX[c]+'"></i>'+c+
+            return '<button class="ctab'+(d.acol===c?' on':'')+'" data-dacol="'+c+'"><i class="dot" style="background:'+hexOf(c)+'"></i>'+c+
             (hasImg(c,'front')?'':' <span style="color:var(--danger)">·</span>')+'</button>';}).join('')+'</div>':'')+
       ['front','back'].map(function(role){
         var req = role==='front', has = hasImg(d.acol,role);
@@ -1037,7 +1048,7 @@ function newproduct(){
       [['Segment',d.seg?segOf(d.seg).n:null],['Gender',d.gender],['Category',d.cat],['Sub-category',d.sub],
        ['Base cut',cutInfo?cutInfo.t:null],['Plate type',cutInfo?({top:'Top',bottom:'Bottom',full:'Full'})[cutInfo.plate]:null],
        ['Tags',d.tags.length?d.tags.length+' set':null],
-       ['Colours',d.cols.length?d.cols.length+' selected':null],
+       ['Colourways',d.cols.length?d.cols.length+' selected':null],
        ['Front images',d.cols.length?fronts+' of '+d.cols.length:null],
        ['Back images',d.cols.length?backs+' of '+d.cols.length:null]].map(function(r){
         return '<div class="kv"><s>'+r[0]+'</s><em class="'+(r[1]?'':'un')+'">'+(r[1]||'not set')+'</em></div>';
@@ -1058,7 +1069,7 @@ function productDetail(){
     '<div class="detail"><div>'+
       '<div class="well" data-im="'+CATIDX[plateOf(p)]+'" style="--tint:'+cv.tint+';aspect-ratio:3/4;border-radius:14px"><span class="lb">'+(cv.sku||p.sku)+' · '+cv.c+'</span></div>'+
       (p.cols.length>1?'<div class="ctabs" style="margin-top:12px">'+p.cols.map(function(v){
-        return '<button class="ctab'+(v===cv?' on':'')+'" data-pcol="'+v.c+'"><i class="dot" style="background:'+COLHEX[v.c]+'"></i>'+v.c+'</button>';}).join('')+'</div>':'')+
+        return '<button class="ctab'+(v===cv?' on':'')+'" data-pcol="'+v.c+'"><i class="dot" style="background:'+hexOf(v.c)+'"></i>'+v.c+'</button>';}).join('')+'</div>':'')+
       '<div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:12px">'+
       [0,1,2].map(function(k){return '<div class="well" data-im="'+k+'" style="--tint:'+cv.tint+';aspect-ratio:1;border-radius:8px"></div>';}).join('')+'</div>'+
     '</div><div>'+
@@ -1070,7 +1081,7 @@ function productDetail(){
       '<div class="sec"><div class="sec-h"><span class="l">Colours</span><span class="a">'+p.cols.length+' · each shot from its own images</span></div>'+
       '<table><thead><tr><th>Colour</th><th>SKU</th><th>Front</th><th>Back</th><th>Shoots</th><th></th></tr></thead><tbody>'+
       p.cols.map(function(v){
-        return '<tr><td><i class="dot" style="background:'+COLHEX[v.c]+';margin-right:8px"></i>'+v.c+'</td>'+
+        return '<tr><td><i class="dot" style="background:'+hexOf(v.c)+';margin-right:8px"></i>'+v.c+'</td>'+
           '<td class="num">'+(v.sku||'<span style="color:var(--ink-45)">style code</span>')+'</td>'+
           '<td>'+(v.front?'<span class="tag ok">Added</span>':'<span class="tag" style="color:var(--danger)">Missing</span>')+'</td>'+
           '<td>'+(v.back?'<span class="tag ok">Added</span>':'<span class="tag mute">None</span>')+'</td>'+
@@ -1167,7 +1178,7 @@ function shootroom(){
         '<div class="grid g4">'+pick.cols.map(function(v){
           var on=T.cols.indexOf(v.c)>-1;
           return '<button class="ccard'+(on?' on':'')+'" '+(v.front?'data-pc="'+v.c+'"':'disabled')+'>'+
-            '<span style="display:block;width:40px;height:52px;border-radius:7px;flex:0 0 auto;background:'+COLHEX[v.c]+';border:1px solid rgba(14,14,14,.12)"></span>'+
+            '<span style="display:block;width:40px;height:52px;border-radius:7px;flex:0 0 auto;background:'+hexOf(v.c)+';border:1px solid rgba(14,14,14,.12)"></span>'+
             '<div><div style="font-weight:600;font-size:13.5px;letter-spacing:var(--track)">'+v.c+'</div>'+
             '<div class="mono" style="color:'+(v.front?'var(--ink-45)':'var(--danger)')+';margin-top:6px">'+
             (!v.front?'No front image':v.back?'Front + back':'Front only')+'</div></div></button>';
@@ -1261,7 +1272,7 @@ function shootroom(){
       (T.pid?'<div class="grid g3" style="gap:12px">'+T.cols.map(function(c){var v=colOf(prod(T.pid),c);
         return '<div class="card" style="display:flex;gap:16px;align-items:center"><div class="well" data-im="'+CATIDX[plateOf(prod(T.pid))]+'" style="--tint:'+v.tint+';width:74px;height:98px;border-radius:8px;flex:0 0 auto"></div>'+
         '<div><div style="font-weight:600;font-size:15px;letter-spacing:var(--track)">'+prod(T.pid).n+'</div>'+
-        '<div class="mono" style="color:var(--ink-45);margin-top:6px"><i class="dot" style="background:'+COLHEX[c]+';margin-right:6px"></i>'+c+' · '+(v.sku||prod(T.pid).sku)+'</div></div></div>';}).join('')+'</div>'
+        '<div class="mono" style="color:var(--ink-45);margin-top:6px"><i class="dot" style="background:'+hexOf(c)+';margin-right:6px"></i>'+c+' · '+(v.sku||prod(T.pid).sku)+'</div></div></div>';}).join('')+'</div>'
        :'<div style="border:1.5px dashed var(--hair);border-radius:12px;padding:30px;text-align:center;background:var(--bone-2)">'+
         '<div style="font-weight:600;font-size:15px;letter-spacing:var(--track)">Drop the garment image</div>'+
         '<div class="mono" style="color:var(--ink-45);margin-top:9px;line-height:1.8">Flat lay or ghost mannequin · plain background · min 1000px</div></div>')+
@@ -1513,8 +1524,24 @@ function bind(){
       if(i>-1) a.splice(i,1); else a.push(b.dataset.pc); S.shoot.poses=[]; render(); };
   });
   root.querySelectorAll('[data-dcol]').forEach(function(b){
-    b.onclick=function(){ var d=S.draft,a=d.cols,c=b.dataset.dcol,i=a.indexOf(c);
-      if(i>-1){ a.splice(i,1); if(d.acol===c) d.acol=null; } else { a.push(c); d.acol=c; } render(); };
+    b.onclick=function(){ var d=S.draft,c=b.dataset.dcol,had=d.cols.some(function(x){return baseOf(x)===c;});
+      if(had){ d.cols=d.cols.filter(function(x){return baseOf(x)!==c;}); if(d.acol&&baseOf(d.acol)===c) d.acol=null; }
+      else { d.cols.push(c); d.acol=c; } render(); };
+  });
+  root.querySelectorAll('[data-dpat]').forEach(function(sel){
+    sel.onchange=function(){ var d=S.draft,old=sel.dataset.dpat,nu=cwLabel(baseOf(old),sel.value);
+      if(nu===old) return;
+      if(d.cols.indexOf(nu)>-1){ toast(nu+' is already on this product'); render(); return; }
+      d.cols[d.cols.indexOf(old)]=nu; if(d.img[old]){ d.img[nu]=d.img[old]; delete d.img[old]; }
+      if(d.acol===old) d.acol=nu; render(); };
+  });
+  root.querySelectorAll('[data-dvdup]').forEach(function(b){
+    b.onclick=function(){ var d=S.draft,src=b.dataset.dvdup,base=baseOf(src),
+        pats=((SUBTAGS[d.sub]||{}).pattern||[]).filter(function(p){return p!=='Solid';}),
+        free=pats.filter(function(p){return d.cols.indexOf(cwLabel(base,p))<0;})[0];
+      if(!free){ toast('Every pattern for this sub-category is already used for '+base); return; }
+      var nu=cwLabel(base,free), at=d.cols.indexOf(src);
+      d.cols.splice(at+1,0,nu); d.acol=nu; render(); toast(nu+' added — set the pattern, then add its images'); };
   });
   root.querySelectorAll('[data-dacol]').forEach(function(b){ b.onclick=function(){ S.draft.acol=b.dataset.dacol; render(); }; });
   root.querySelectorAll('[data-dimg]').forEach(function(b){
@@ -1536,7 +1563,11 @@ function bind(){
   var dc=document.getElementById('dcat');
   if(dc) dc.onchange=function(){ S.draft.cat = dc.value==='— select —'?null:dc.value; S.draft.sub=null; render(); };
   var ds=document.getElementById('dsub');
-  if(ds) ds.onchange=function(){ S.draft.sub = ds.value==='— select —'?null:ds.value; S.draft.tags=[]; render(); };
+  if(ds) ds.onchange=function(){ var d=S.draft; d.sub = ds.value==='— select —'?null:ds.value; d.tags=[];
+    // patterns are mapped per sub-category, so every colourway falls back to solid
+    var seen={}; d.cols=d.cols.filter(function(c){var b=baseOf(c); if(seen[b]) return false; seen[b]=1; return true;}).map(baseOf);
+    var img={}; Object.keys(d.img||{}).forEach(function(k){ if(k===baseOf(k)) img[k]=d.img[k]; }); d.img=img;
+    if(d.acol) d.acol=baseOf(d.acol); render(); };
   root.querySelectorAll('[data-pp]').forEach(function(b){
     b.onclick=function(){
       var p=prod(b.dataset.pp);

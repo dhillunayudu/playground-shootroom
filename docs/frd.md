@@ -365,8 +365,9 @@ The product catalogue is the entry point to a shoot. A product carries the garme
 | Sub-category | Reference | Yes | From the global taxonomy, scoped to the selected category |
 | Brand | Reference | No | Selected from **Master data** (§5.4), not free text |
 | Description | Long text | No | |
-| **Colours** | Reference[] | **Yes, at least one** | From Master data, each with a hex swatch. Each colour is a **colourway** with its own optional SKU and its own garment images (§5.1.1) |
+| **Colourways** | Reference[] | **Yes, at least one** | A colour from Master data plus, optionally, a print or pattern. Each colourway has its own optional SKU and its own garment images (§5.1.1) |
 | **Front image** *(per colour)* | Image | **Yes** | Flat lay or ghost mannequin, plain background. Versioned — see §5.5 |
+| Pattern *(per colourway)* | Reference | No | A pattern tag mapped to the sub-category — floral, stripe, ikat. Blank means solid. Feeds the generation prompt |
 | Back image *(per colour)* | Image | No | The only source for back-view poses in that colour |
 | Additional images | Image[] | No | Reference and detail shots. Never used for generation |
 | Size set | Reference | No | From Master data. Used to suggest models of matching size |
@@ -379,19 +380,23 @@ The product catalogue is the entry point to a shoot. A product carries the garme
 | Shoot count | Derived | — | Number of completed shoots, across all colours and per colour |
 | Last shot | Derived | — | Date of most recent shoot, across all colours and per colour |
 
-The fields from Fit through Pattern are **shoot-relevant metadata**: they improve model and plate selection and feed the scene prompt. All optional, but the product page should indicate that completing them improves results.
+The descriptive fields — fit, fabric, season, tags and per-colourway pattern — are **shoot-relevant metadata**: they improve model and plate selection and feed the scene prompt. All optional, but the product page should indicate that completing them improves results.
 
 #### 5.1.1 Colourways
 
-A product is a **style**. Each colour it comes in is a **colourway** (a product variant). Everything that decides the plate — segment, gender, category, sub-category, base cut — belongs to the style, so every colour shoots on the same plates and the same eligible models. What differs per colour is the garment photo, and the photo is the one thing that cannot be shared: the try-on dresses the model in exactly the image it is given, so a red photo can only produce a red garment.
+A product is a **style**. Each colour it comes in — and, where it has one, each print or pattern — is a **colourway** (a product variant). Navy solid, navy floral and navy stripe are three colourways of one style. Everything that decides the plate — segment, gender, category, sub-category, base cut — belongs to the style, so every colour shoots on the same plates and the same eligible models. What differs per colour is the garment photo, and the photo is the one thing that cannot be shared: the try-on dresses the model in exactly the image it is given, so a red photo can only produce a red garment.
 
 **Naming.** In the schema a colourway is a `ProductVariant`. The model library's inpainted base garments (the jeans under a top shoot) are `PlateVariants`. The two are unrelated; tickets should always use the full name.
 
 | ID | Requirement | Priority |
 |---|---|---|
 | FR-PRD-16 | A product has **one or more colours**, picked from the Colours master data. A single-colour product is a product with one colour; there is no separate "no variants" case | Must |
-| FR-PRD-16a | A colour may appear **once per product**. Two "Black" colourways on one style are rejected | Must |
-| FR-PRD-16b | Variants are **by colour only**. Sizes need no imagery of their own and stay on the product's size set | Must |
+| FR-PRD-16a | A colour **and pattern** combination may appear **once per product**. Two solid black colourways on one style are rejected; black solid and black stripe are allowed | Must |
+| FR-PRD-16b | Variants are **by colour and pattern only**. Sizes need no imagery of their own and stay on the product (but see F49 on size and model eligibility) | Must |
+| FR-PRD-16c | **Pattern is set per colourway, not per product.** It is chosen from the pattern tags mapped to the product's sub-category (§5.4.2). Blank means solid | Must |
+| FR-PRD-16d | Pattern no longer appears in the product's tag picker. The tag vocabulary keeps the `pattern` kind; it is simply applied at colourway level | Must |
+| FR-PRD-16e | A "+ Pattern" action adds the same colour in another pattern. It is offered only while unused mapped patterns remain | Should |
+| FR-PRD-16f | Changing the product's sub-category resets every colourway's pattern to solid, since the mapped patterns change with it (as FR-TAG-10 does for tags) | Must |
 | FR-PRD-17 | Each colour may carry **its own SKU**, optional. Catalogues that code each colour (KUR-1042-IVR) fill it in; catalogues with one code per style leave it blank and the style code identifies it | Must |
 | FR-PRD-17a | Colour SKUs are unique within the account, and must not equal any style code | Must |
 | FR-PRD-17b | A colour may carry its own price, overriding the product price | Could |
@@ -558,7 +563,7 @@ Sleeve length, neckline, hem, garment length and pattern were product columns. T
 |---|---|---|
 | FR-TAG-01 | Tags are a **global controlled vocabulary**, created and maintained by Super admin only | Must |
 | FR-TAG-02 | Clients **select** tags. They cannot create, rename, archive or map them | Must |
-| FR-TAG-03 | Each tag carries a **kind** — sleeve, neckline, hem, length, pattern, detail, occasion — so the product form groups them rather than presenting one long list | Must |
+| FR-TAG-03 | Each tag carries a **kind** — sleeve, neckline, hem, length, pattern, detail, occasion — so the product form groups them rather than presenting one long list. **Pattern tags are applied per colourway** (FR-PRD-16c), all other kinds per product | Must |
 | FR-TAG-04 | A tag may carry a **prompt fragment**, the wording used in generation when it differs from the display name | Should |
 | FR-TAG-05 | **Fit remains a field, not a tag.** It is single-valued, applies to every garment, and changes how the try-on drapes | Must |
 
@@ -1417,7 +1422,9 @@ Substantial decisions that need their own discussion before they can be specifie
 | F53 | ~~Controlled tags?~~ **Decided:** controlled, **Shootroom-owned** global vocabulary maintained by Super admin, with a kind and an optional prompt fragment (§5.4.1). Clients select only |
 | F54 | ~~Columns or tags?~~ **Decided:** collapsed into global tags, mapped per sub-category. Fit alone stays a field. Open: the seed vocabulary must cover Indian garment terms — dupatta, ghera, nehru collar — not only Western descriptors |
 | F55 | Does a front flat lay genuinely dress a three-quarter or side pose well, or do those also degrade? If they do, the pose set narrows further or a side image becomes a third role |
-| F49 | Size set values are free text and do not join to the model attribute vocabulary, so "suggest models of matching size" cannot currently work. Should size sets draw from the controlled vocabulary, or is the suggestion dropped? |
+| F49 | **Size and model eligibility.** Sizes need no photos of their own, but the size range should narrow the casting: a plus-size line should only offer plus-size models. Today size set values are free text and do not join to the model size vocabulary, so this cannot work. **Proposal:** size sets draw from a controlled size vocabulary that maps each size to a model size band (petite, standard, plus, tall). The product's size range then becomes a **fourth filter gate** after segment, gender and base cut — a model is offered only if its size band falls within the range. Open: hard gate or pre-applied default the user can widen; and whether a broad range (XS–3XL) shows both standard and plus models or asks which to feature |
+| F56 | **How is fabric treated?** It stays on the product, not the colourway — the same style in linen and cotton drapes differently and is effectively a different product. Open: does fabric only feed the scene prompt, or does it also gate generation? `Fabrics.IsSheer` already flags fabrics the try-on handles poorly — should a sheer fabric warn, restrict poses, or block? |
+| F57 | **The remaining attributes — season, fit, price, brand, tags.** All stay on the product. Open, per attribute: does it feed the prompt (fit and tags do; season and brand do not), is it ever per colourway (price already may be, FR-PRD-17b; season might be for colours carried over), and does any of it gate models or poses? |
 | F51 | ~~Retention periods?~~ **Decided:** configurable buckets, default forever. The 90-day bucket takes operational noise only — sign-ins, password attempts, token and session lifecycle. Anything describing a change to customer data stays unlisted and is kept |
 | F52 | Where do archives live, and who can read them back? A restore that needs an engineer is not a restore support can use |
 | F50 | What seed lists ship for colours, fabrics and size sets? They must suit Indian apparel — silk, khadi, chanderi, georgette — not only cotton and linen |
