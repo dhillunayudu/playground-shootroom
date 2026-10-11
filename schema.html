@@ -291,6 +291,11 @@ T('SegmentModels','taxonomy','THE SAFETY CONTROL. Enabling a segment creates a p
 T('ClientEntitlements','taxonomy','One row per gated item a client has requested or been granted. No row means not granted.',
  ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','ScopeType|ENUM','ScopeId|CHAR(26)','Status|ENUM','RequestedBy|CHAR(26)|n',
   'DecidedByStaffId|CHAR(26)|n','DecidedAt|DATETIME|n','Notes|VARCHAR|n']),
+T('Tags','taxonomy','GLOBAL and Super-admin owned, not client master data. A tag mapped to a sub-category fixes the generation prompt for that garment, so the vocabulary cannot be per client.',
+ ['Id|CHAR(26)|p','Code|VARCHAR(40)','Name|VARCHAR(80)','Kind|ENUM','PromptFragment|VARCHAR|n','IsActive|TINYINT',
+  'SortOrder|SMALLINT','CreatedByStaffId|CHAR(26)|n','CreatedAt|DATETIME','UpdatedByStaffId|CHAR(26)|n','UpdatedAt|DATETIME']),
+T('SubCategoryTags','taxonomy','Which tags are offered for which garment. A polo offers a collar, not a floor length. Unmapped tags are hidden, not greyed.',
+ ['SubCategoryId|CHAR(26)|pf','TagId|CHAR(26)|pf','IsDefault|TINYINT','SortOrder|SMALLINT']),
 T('Colours','master','Carries a hex swatch used on product cards and filters.',
  ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','Name|VARCHAR(120)','Hex|CHAR(7)|n','Status|ENUM','ArchivedBy|CHAR(26)|n','ArchivedAt|DATETIME|n','CreatedBy|CHAR(26)|n','CreatedAt|DATETIME','UpdatedBy|CHAR(26)|n','UpdatedAt|DATETIME']),
 T('Fabrics','master','IsSheer flags fabrics the try-on handles unreliably — thin material can render skin where fabric should be.',
@@ -301,20 +306,18 @@ T('SizeSets','master','Size list as JSON. Intended to suggest models of matching
  ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','Name|VARCHAR(120)','Sizes|JSON','Status|ENUM','ArchivedBy|CHAR(26)|n','ArchivedAt|DATETIME|n','CreatedBy|CHAR(26)|n','CreatedAt|DATETIME','UpdatedBy|CHAR(26)|n','UpdatedAt|DATETIME']),
 
 /* ---- Products ---- */
-T('Products','product','Segment, Category and SubCategory come from the global taxonomy. PlateType is snapshotted so re-typing a category never changes past products.',
+T('Products','product','The STYLE. Segment, gender, category and sub-category live here, so every colourway shoots on the same plates. Sku is the style code. PlateType is snapshotted so re-typing a category never changes past products. Plate-deciding fields lock after the first shoot.',
  ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','Name|VARCHAR(200)','Sku|VARCHAR(80)','ExternalId|VARCHAR|n',
-  'SegmentId|CHAR(26)|f','Gender|ENUM','CategoryId|CHAR(26)|f','SubCategoryId|CHAR(26)|f','BaseCut|ENUM','PlateType|ENUM','BrandId|CHAR(26)|fn','ColourId|CHAR(26)|fn',
+  'SegmentId|CHAR(26)|f','Gender|ENUM','CategoryId|CHAR(26)|f','SubCategoryId|CHAR(26)|f','BaseCut|ENUM','PlateType|ENUM','BrandId|CHAR(26)|fn',
   'FabricId|CHAR(26)|fn','SeasonId|CHAR(26)|fn','SizeSetId|CHAR(26)|fn','Fit|ENUM|n','PriceMinor|INT|n',
   'Status|ENUM','ShootCount|INT','LastShotAt|DATETIME|n','IsStale|TINYINT','DeletedAt|DATETIME|n']),
-T('Tags','taxonomy','GLOBAL and Super-admin owned, not client master data. A tag mapped to a sub-category fixes the generation prompt for that garment, so the vocabulary cannot be per client.',
- ['Id|CHAR(26)|p','Code|VARCHAR(40)','Name|VARCHAR(80)','Kind|ENUM','PromptFragment|VARCHAR|n','IsActive|TINYINT',
-  'SortOrder|SMALLINT','CreatedByStaffId|CHAR(26)|n','CreatedAt|DATETIME','UpdatedByStaffId|CHAR(26)|n','UpdatedAt|DATETIME']),
-T('SubCategoryTags','taxonomy','Which tags are offered for which garment. A polo offers a collar, not a floor length. Unmapped tags are hidden, not greyed.',
- ['SubCategoryId|CHAR(26)|pf','TagId|CHAR(26)|pf','IsDefault|TINYINT','SortOrder|SMALLINT']),
+T('ProductVariants','product','Colourways. One row per colour the style comes in; a single-colour product has exactly one. Images and runs belong to a variant, because the try-on can only produce the colour it is shown. Sku is optional, for catalogues that code each colour.',
+ ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','ProductId|CHAR(26)|f','ColourId|CHAR(26)|f','Sku|VARCHAR(80)|n',
+  'PriceMinor|INT|n','SortOrder|SMALLINT','Status|ENUM','ShootCount|INT','LastShotAt|DATETIME|n','IsStale|TINYINT','DeletedAt|DATETIME|n']),
 T('ProductTags','product','Join between a product and its tags. Multi-valued by design — a sleeve can be half AND puff AND raglan.',
  ['ProductId|CHAR(26)|pf','TagId|CHAR(26)|pf','ClientId|CHAR(26)|f','CreatedAt|DATETIME']),
-T('ProductImages','product','Two garment images: front is required and dresses most poses, back is the only source for a back-view pose. A generated column enforces one active image per role.',
- ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','ProductId|CHAR(26)|f','Role|ENUM','Uri|VARCHAR(500)',
+T('ProductImages','product','Per colourway. Front is required and dresses most poses; back is the only source for a back-view pose. A generated column enforces one active image per role per colour.',
+ ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','ProductId|CHAR(26)|f','ProductVariantId|CHAR(26)|f','Role|ENUM','Uri|VARCHAR(500)',
   'WidthPx|INT|n','HeightPx|INT|n','IsActive|TINYINT','ActiveRoleKey|VARCHAR|n',
   'ShootCount|INT','UploadedBy|CHAR(26)|n','UploadedAt|DATETIME','ReplacedAt|DATETIME|n',
   'ModerationStatus|ENUM']),
@@ -336,14 +339,14 @@ T('Poses','library','try_on_safe marks the frontal Poses used as try-on input.',
 T('Scenes','library','Applied after try-on, as a separate relight pass.',
  ['Id|CHAR(26)|p','Code|VARCHAR(30)','Label|VARCHAR(120)','RelightPrompt|TEXT|n',
   'NegativePrompt|TEXT|n','IsActive|TINYINT']),
-T('Variants','library','Bottoms, tops and eyewear. Inpainted onto a Plates and cached.',
+T('PlateVariants','library','What the model wears on the half that is not being replaced: bottoms for a top shoot, tops for a bottom shoot, plus eyewear. Inpainted onto a plate and cached. Not to be confused with ProductVariants.',
  ['Id|CHAR(26)|p','Code|VARCHAR(20)','Kind|ENUM','Label|VARCHAR(120)','SwatchHex|CHAR(7)|n',
   'BundledFootwear|VARCHAR|n','InpaintPrompt|TEXT|n','NegativePrompt|TEXT|n','IsActive|TINYINT']),
 T('Plates','library','Approved canonical plates. generated_by must differ from approved_by.',
  ['Id|CHAR(26)|p','ModelId|CHAR(26)|f','PlateType|ENUM','BaseCut|ENUM','PoseId|CHAR(26)|f','ImageUri|VARCHAR(500)',
   'QaStatus|ENUM','QaNotes|TEXT|n','GeneratedBy|CHAR(26)|n','ApprovedBy|CHAR(26)|n','ApprovedAt|DATETIME|n']),
-T('VariantRenders','library','Stage-02 cache. Key is Models + Plates type + Variants + Poses.',
- ['Id|CHAR(26)|p','CacheKey|VARCHAR(120)','PlateId|CHAR(26)|f','VariantId|CHAR(26)|f',
+T('PlateVariantRenders','library','Stage-02 cache. Key is model + plate type + plate variant + pose.',
+ ['Id|CHAR(26)|p','CacheKey|VARCHAR(120)','PlateId|CHAR(26)|f','PlateVariantId|CHAR(26)|f',
   'ImageUri|VARCHAR(500)','HitCount|INT','LastUsedAt|DATETIME|n']),
 T('ModelFavourites','library','Per member, per Clients.',
  ['ClientId|CHAR(26)|p','ModelId|CHAR(26)|pf','UserAccessId|CHAR(26)|p','CreatedAt|DATETIME']),
@@ -356,13 +359,13 @@ T('CastingRequests','library','Captured when a filter combination returns nothin
 
 /* ---- shoot ---- */
 T('ShootConfigurations','shoot','Garment-independent. Steps 1 to 3 describe the plate, not the Products.',
- ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','Name|VARCHAR|n','GarmentCategory|ENUM',
-  'ModelId|CHAR(26)|n','VariantId|CHAR(26)|n','SceneId|CHAR(26)|n','PoseIds|JSON|n',
+ ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','Name|VARCHAR|n','CategoryId|CHAR(26)|n','PlateType|ENUM',
+  'ModelId|CHAR(26)|n','PlateVariantId|CHAR(26)|n','SceneId|CHAR(26)|n','PoseIds|JSON|n',
   'Formats|JSON|n','IsSaved|TINYINT','CreatedBy|CHAR(26)|n']),
-T('Runs','shoot','One garment against one configuration. Records ProductImageId, not Products alone.',
+T('Runs','shoot','One colourway against one configuration. A multi-colour shoot is one run per colour sharing a ConfigurationId. Records the exact images used, not the product alone.',
  ['Id|CHAR(26)|p','ClientId|CHAR(26)|f','ConfigurationId|CHAR(26)|n','UserAccessId|CHAR(26)',
-  'ProductId|CHAR(26)|fn','ProductImageId|CHAR(26)|fn','ProductBackImageId|CHAR(26)|fn',
-  'GarmentCategory|ENUM','ModelId|CHAR(26)|f','VariantId|CHAR(26)|n','SceneId|CHAR(26)|n',
+  'ProductId|CHAR(26)|fn','ProductVariantId|CHAR(26)|fn','ProductImageId|CHAR(26)|fn','ProductBackImageId|CHAR(26)|fn',
+  'CategoryId|CHAR(26)|n','PlateType|ENUM','ModelId|CHAR(26)|f','PlateVariantId|CHAR(26)|n','SceneId|CHAR(26)|n',
   'PoseIds|JSON','Formats|JSON','IsPreview|TINYINT','IsDemo|TINYINT',
   'ImageCountExpected|SMALLINT','ImageCountDelivered|SMALLINT','CreditsReserved|INT',
   'CreditsCommitted|INT','Status|ENUM','ApprovalState|ENUM','SubmittedAt|DATETIME|n',
@@ -437,11 +440,12 @@ var R=[
  ['Products','SegmentId','Segments','Id'],
  ['SegmentModels','SegmentId','Segments','Id'],
  ['SegmentModels','ModelId','Models','Id'],
- ['Runs','SegmentId','Segments','Id'],
  ['Products','CategoryId','Categories','Id'],
  ['Products','SubCategoryId','SubCategories','Id'],
  ['Products','BrandId','Brands','Id'],
- ['Products','ColourId','Colours','Id'],
+ ['ProductVariants','ClientId','Clients','Id'],
+ ['ProductVariants','ProductId','Products','Id'],
+ ['ProductVariants','ColourId','Colours','Id'],
  ['Products','FabricId','Fabrics','Id'],
  ['Products','SeasonId','Seasons','Id'],
  ['Products','SizeSetId','SizeSets','Id'],
@@ -450,11 +454,12 @@ var R=[
  ['SubCategoryTags','SubCategoryId','SubCategories','Id'],
  ['SubCategoryTags','TagId','Tags','Id'],
  ['ProductImages','ProductId','Products','Id'],
+ ['ProductImages','ProductVariantId','ProductVariants','Id'],
  ['ModelTags','ModelId','Models','Id'],
  ['Plates','ModelId','Models','Id'],
  ['Plates','PoseId','Poses','Id'],
- ['VariantRenders','PlateId','Plates','Id'],
- ['VariantRenders','VariantId','Variants','Id'],
+ ['PlateVariantRenders','PlateId','Plates','Id'],
+ ['PlateVariantRenders','PlateVariantId','PlateVariants','Id'],
  ['ModelFavourites','ModelId','Models','Id'],
  ['ModelBookings','ClientId','Clients','Id'],
  ['ModelBookings','ModelId','Models','Id'],
@@ -464,9 +469,11 @@ var R=[
  ['Runs','ClientId','Clients','Id'],
  ['Runs','ConfigurationId','ShootConfigurations','Id'],
  ['Runs','ProductId','Products','Id'],
+ ['Runs','ProductVariantId','ProductVariants','Id'],
  ['Runs','ProductImageId','ProductImages','Id'],
+ ['Runs','ProductBackImageId','ProductImages','Id'],
  ['Runs','ModelId','Models','Id'],
- ['Runs','VariantId','Variants','Id'],
+ ['Runs','PlateVariantId','PlateVariants','Id'],
  ['Runs','SceneId','Scenes','Id'],
  ['RunImages','RunId','Runs','Id'],
  ['RunImages','PoseId','Poses','Id'],
@@ -512,6 +519,13 @@ function build(){
     t.el=el;
     el.querySelector('h3').addEventListener('mousedown',function(e){ startDragTable(e,t); });
     el.addEventListener('click',function(e){ if(!dragged) select(t.name); e.stopPropagation(); });
+  });
+  // Re-stack each column from the rendered heights, so a long table never
+  // overlaps the one below it however the fonts measure.
+  var y2={};
+  TABLES.forEach(function(t){
+    var c=G[t.g].col; if(y2[c]===undefined) y2[c]=PADY;
+    var h=t.el.offsetHeight||t.h; t.h=h; t.y=y2[c]; t.el.style.top=t.y+'px'; y2[c]=t.y+h+GAPY;
   });
   drawLinks();
   rail();
@@ -668,8 +682,8 @@ $('#keysBtn').onclick=function(){
   this.classList.toggle('on',keysOnly);
   TABLES.forEach(function(t){
     t.el.classList.toggle('keys',keysOnly);
-    t.h = keysOnly ? 34 + t.cols.filter(function(c){return /[pf]/.test(c.f);}).length*17 + 6
-                   : 34 + t.cols.length*17 + 6;
+    t.h = t.el.offsetHeight || (keysOnly ? 34 + t.cols.filter(function(c){return /[pf]/.test(c.f);}).length*17 + 6
+                   : 34 + t.cols.length*17 + 6);
   });
   drawLinks(); select(sel);
 };

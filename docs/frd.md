@@ -356,8 +356,8 @@ The product catalogue is the entry point to a shoot. A product carries the garme
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| Product name | Text | Yes | |
-| SKU / product code | Text | Yes | Unique within account |
+| Product name | Text | Yes | The **style** name, without a colour — "Cotton Straight Kurta", not "Ivory Cotton Kurta" |
+| Style code | Text | Yes | Unique within account. Identifies the style; each colour may carry its own SKU (§5.1.1) |
 | External ID | Text | No | For PIM or e-commerce sync |
 | **Segment** | Reference | **Yes** | Fast fashion, Occasion, Swimwear. The safety boundary (§5.3.1) |
 | **Gender** | Enum | **Yes** | Womenswear / Menswear / Unisex. Narrows the casting at model browse. **Unisex shows both men's and women's models.** Only genders allowed by the sub-category are offered (FR-PRD-14a) |
@@ -365,9 +365,10 @@ The product catalogue is the entry point to a shoot. A product carries the garme
 | Sub-category | Reference | Yes | From the global taxonomy, scoped to the selected category |
 | Brand | Reference | No | Selected from **Master data** (§5.4), not free text |
 | Description | Long text | No | |
-| **Primary image** | Image | Yes | Flat lay or ghost mannequin, plain background. Versioned — see §5.4 |
+| **Colours** | Reference[] | **Yes, at least one** | From Master data, each with a hex swatch. Each colour is a **colourway** with its own optional SKU and its own garment images (§5.1.1) |
+| **Front image** *(per colour)* | Image | **Yes** | Flat lay or ghost mannequin, plain background. Versioned — see §5.5 |
+| Back image *(per colour)* | Image | No | The only source for back-view poses in that colour |
 | Additional images | Image[] | No | Reference and detail shots. Never used for generation |
-| Colourway | Reference | No | From Master data, carries a hex swatch. Multiple per product |
 | Size set | Reference | No | From Master data. Used to suggest models of matching size |
 | Fit | Enum | No | Slim, regular, relaxed, oversized. The only descriptive attribute kept as a field |
 | Fabric | Reference | No | From Master data. Influences drape in the scene pass |
@@ -375,10 +376,34 @@ The product catalogue is the entry point to a shoot. A product carries the garme
 | Price | Currency | No | |
 | Status | Enum | Yes | Draft, Active, Archived |
 | **Tags** | Reference[] | No | From the global vocabulary, filtered to those mapped to the sub-category (§5.4.2). Multi-valued |
-| Shoot count | Derived | — | Number of completed shoots |
-| Last shot | Derived | — | Date of most recent shoot |
+| Shoot count | Derived | — | Number of completed shoots, across all colours and per colour |
+| Last shot | Derived | — | Date of most recent shoot, across all colours and per colour |
 
 The fields from Fit through Pattern are **shoot-relevant metadata**: they improve model and plate selection and feed the scene prompt. All optional, but the product page should indicate that completing them improves results.
+
+#### 5.1.1 Colourways
+
+A product is a **style**. Each colour it comes in is a **colourway** (a product variant). Everything that decides the plate — segment, gender, category, sub-category, base cut — belongs to the style, so every colour shoots on the same plates and the same eligible models. What differs per colour is the garment photo, and the photo is the one thing that cannot be shared: the try-on dresses the model in exactly the image it is given, so a red photo can only produce a red garment.
+
+**Naming.** In the schema a colourway is a `ProductVariant`. The model library's inpainted base garments (the jeans under a top shoot) are `PlateVariants`. The two are unrelated; tickets should always use the full name.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-PRD-16 | A product has **one or more colours**, picked from the Colours master data. A single-colour product is a product with one colour; there is no separate "no variants" case | Must |
+| FR-PRD-16a | A colour may appear **once per product**. Two "Black" colourways on one style are rejected | Must |
+| FR-PRD-16b | Variants are **by colour only**. Sizes need no imagery of their own and stay on the product's size set | Must |
+| FR-PRD-17 | Each colour may carry **its own SKU**, optional. Catalogues that code each colour (KUR-1042-IVR) fill it in; catalogues with one code per style leave it blank and the style code identifies it | Must |
+| FR-PRD-17a | Colour SKUs are unique within the account, and must not equal any style code | Must |
+| FR-PRD-17b | A colour may carry its own price, overriding the product price | Could |
+| FR-PRD-18 | **Garment images belong to a colour, not the product.** Each colour has its own required front image and optional back image, versioned independently (§5.5) | Must |
+| FR-PRD-18a | A product is ready to shoot only when **every active colour has a front image**. A colour without one is shown as incomplete with a route to add it | Must |
+| FR-PRD-18b | The product form shows a colour picker, a row per selected colour (SKU, front and back status), and an image panel switched by colour | Must |
+| FR-PRD-19 | Shoot count, last shot and staleness are tracked **per colour**, and rolled up to the product for the list view and dashboard | Must |
+| FR-PRD-19a | The product list shows a swatch per colour and the colour count | Should |
+| FR-PRD-19b | The product detail page lists every colour with its SKU, image status and shoot count, and a **Shoot** action per colour | Must |
+| FR-PRD-20 | A colour can be **added** to a product at any time, including after shoots, since it changes nothing about the plate. Removing a colour that has shoots **archives** it; its assets are kept | Must |
+| FR-PRD-20a | The lock in FR-PRD-15 applies to the product once **any** of its colours has been shot | Must |
+| FR-PRD-21 | CSV import accepts one row per colour, grouped into styles by style code (FR-PRD-08) | Should |
 
 ### 5.2 Product management
 
@@ -390,10 +415,10 @@ The fields from Fit through Pattern are **shoot-relevant metadata**: they improv
 | FR-PRD-04 | Product detail page showing all fields, the active image, archived images (§5.5), and full shoot history | Must |
 | FR-PRD-05 | Edit and archive. Archived products are hidden from shoot selection but retain history | Must |
 | FR-PRD-06 | Delete, with warning if shoots exist. Deleting a product does not delete generated images | Must |
-| FR-PRD-07 | **Start a shoot** from the product detail page, pre-seeding category and primary image | Must |
+| FR-PRD-07 | **Start a shoot** from the product detail page. A single-colour product goes straight to model browse; a multi-colour product opens the colour step (FR-SHT-01j). Each colour row also offers **Shoot** for that colour alone | Must |
 | FR-PRD-08 | Bulk import by CSV with column mapping, validation preview and per-row error reporting | Should |
-| FR-PRD-09 | Bulk image upload matched to products by SKU in the filename | Should |
-| FR-PRD-10 | Duplicate a product to create a colourway variant | Could |
+| FR-PRD-09 | Bulk image upload matched to colours by colour SKU, or style code plus colour name, in the filename | Should |
+| FR-PRD-10 | ~~Duplicate a product to create a colourway variant~~ Superseded by colourways (§5.1.1) | — |
 | FR-PRD-11 | Image validation on upload is limited to **format, resolution and file size**. Minimum 1000px shortest edge | Must |
 | FR-PRD-11a | **No automated assessment of image suitability.** Background, lighting, framing and garment presentation are the customer's responsibility | Must |
 | FR-PRD-11b | Upload guidance is shown inline at the upload point — three good examples and three bad — not linked from a help article | Must |
@@ -565,15 +590,15 @@ Images are therefore **never overwritten or deleted**. Uploading a replacement a
 
 | ID | Requirement | Priority |
 |---|---|---|
-| FR-IMG-00 | A product carries a **required front image** and an **optional back image**. Both are garment images used for generation; additional images are reference only | Must |
+| FR-IMG-00 | **Each colour** of a product carries a **required front image** and an **optional back image**. Both are garment images used for generation; additional images are reference only | Must |
 | FR-IMG-00a | Each role is versioned independently. Replacing the back image does not disturb the front, and each keeps its own archive | Must |
-| FR-IMG-00b | **Poses that require a back view are unavailable when the product has no back image**, with the reason stated and a route to add one | Must |
+| FR-IMG-00b | **Poses that require a back view are unavailable when a colour being shot has no back image**, with the reason stated and a route to add one | Must |
 | FR-IMG-00c | The product page and product list show at a glance whether a back image exists, since it determines which poses can be shot | Should |
 | FR-IMG-00d | A run records **which image of each role** it used, not merely which product | Must |
 | FR-IMG-00e | Adding a back image to a product that has already been shot makes back poses available for new runs. Existing runs are unaffected | Must |
 | FR-IMG-01 | The customer may replace either garment image at any time from the product page | Must |
 | FR-IMG-02 | Replacement **adds a new image record with `is_active = true`** and sets the previous record to `is_active = false`. Nothing is overwritten or deleted | Must |
-| FR-IMG-03 | Exactly one image per **role** per product is active at any time — one live front, one live back | Must |
+| FR-IMG-03 | Exactly one image per **role** per **colour** is active at any time — one live front, one live back for each colour | Must |
 | FR-IMG-04 | Every shoot records the **image ID it ran against**, not just the product ID | Must |
 | FR-IMG-05 | Deactivating an image never alters, hides or invalidates assets already generated from it | Must |
 | FR-IMG-06 | Front and back images are versioned. Additional reference images are freely editable, as they do not drive generation | Must |
@@ -595,7 +620,7 @@ Versioning makes staleness detectable without any extra bookkeeping: a product w
 
 | ID | Requirement | Priority |
 |---|---|---|
-| FR-IMG-13 | A product is **stale** when its most recent shoot ran against an image that is no longer active | Must |
+| FR-IMG-13 | A **colour** is **stale** when its most recent shoot ran against an image that is no longer active. A product is stale when any of its colours is | Must |
 | FR-IMG-14 | Stale products are marked on the product page and in the product list | Must |
 | FR-IMG-15 | Stale count appears on the dashboard alongside products without imagery. Both resolve the same way — run a shoot | Must |
 | FR-IMG-16 | Assets from an inactive image remain downloadable, labelled as produced from a previous image. **Staleness is a label, not a block** — the customer paid for those images, and blocking them would punish improving product photography | Must |
@@ -618,10 +643,16 @@ The four-step flow: **Product → Model → Poses → Review.**
 | FR-SHT-01b | Four resolved values are shown, stated as derived rather than chosen: **segment** (which models may be paired), **gender** (narrows the casting), **base cut** (which plate loads), **plate type** (which half of the silhouette is replaced) | Must |
 | FR-SHT-01c | A product missing segment, gender or sub-category cannot be shot. It is shown as incomplete with a route to fix it, never silently absent | Must |
 | FR-SHT-01d | A product whose segment the client no longer holds cannot be shot, and the reason is stated | Must |
-| FR-SHT-01e | Entering from a product page skips step 1 entirely | Must |
+| FR-SHT-01e | Entering from a product page skips step 1, unless the product has more than one shootable colour, in which case step 1 opens on the colour choice | Must |
 | FR-SHT-01f | Draft and archived products are not selectable | Must |
 | FR-SHT-01g | Search and filter across the product list, since a catalogue may run to thousands | Must |
 | FR-SHT-01h | **There is no ad-hoc path.** A shoot requires a product record | Must |
+| FR-SHT-01j | **Colour choice.** When the selected product has more than one colour, step 1 asks which to shoot. The user picks **one or more**; the step cannot be completed without one. A single-colour product skips the question | Must |
+| FR-SHT-01k | Colours without a front image are shown but **not selectable**, with the reason and a route to add one | Must |
+| FR-SHT-01l | A "select all available" action picks every shootable colour | Should |
+| FR-SHT-01m | **A multi-colour shoot uses the same model, poses, scene and formats for every colour**, so the colourways match on the product page. It is one run per colour sharing one configuration | Must |
+| FR-SHT-01n | Cost is **images × colours**, shown before generation: 4 poses × 2 formats × 3 colours = 24 credits. The credit check covers the whole shoot | Must |
+| FR-SHT-01o | Each colour's run succeeds, fails and is charged independently (FR-CR charge-on-success). One colour failing does not fail the others | Must |
 | FR-SHT-01i | A trial account is seeded with a **sample product**, so the demo shoot runs before the user has created anything | Must |
 
 **Why products are mandatory.** An ad-hoc shoot would still require segment, gender and garment type to be supplied by hand, because the pipeline cannot resolve them otherwise. So an ad-hoc path is not "skip the product" — it is "give us the same facts and throw them away." Requiring a product keeps one path, makes every shoot traceable, and means shoot history and staleness work without exception.
@@ -638,9 +669,9 @@ The four-step flow: **Product → Model → Poses → Review.**
 | FR-SHT-02c | Result counts and coverage figures reflect the plate-type filter, so a stated count is always a count of models that can shoot this garment | Must |
 | FR-SHT-02d | A model whose required plate is later retired stops appearing for new shoots. Existing runs and assets are unaffected | Must |
 | FR-SHT-03 | Step 3 — select poses, base garment variant where applicable, and scene | Must |
-| FR-SHT-03a | Back-view poses are shown only when the product holds a back image (FR-IMG-00b). Otherwise they are unavailable with the reason stated | Must |
+| FR-SHT-03a | Back-view poses are available only when **every selected colour** holds a back image (FR-IMG-00b). Otherwise they are unavailable, naming the colours that lack one, with the option to add the image or drop that colour from the shoot | Must |
 | FR-SHT-04 | Step 4 — confirm the garment image from the product, select formats, review the credit cost, generate | Must |
-| FR-SHT-04a | The run records the **product ID and the specific image ID** it was generated from (§5.5). Product ID alone is insufficient once images are versioned | Must |
+| FR-SHT-04a | The run records the **product ID, the colour (variant) ID and the specific image IDs** it was generated from (§5.5). Product ID alone is insufficient once images are versioned and colours differ | Must |
 | FR-SHT-05 | Shoot draft is saved automatically at every step and resumable after leaving | Must |
 | FR-SHT-06 | Named, saved shoot configurations reusable against a different product | Should |
 | FR-SHT-07 | Generation runs in the background; the user may leave the page and is notified on completion | Must |
@@ -1403,7 +1434,7 @@ Substantial decisions that need their own discussion before they can be specifie
 | F33 | Are the OTP rate limits (5/hour, 10/day) right for a business tool, or too tight for a shared team inbox? |
 | F32 | Does sales-led client creation (FR-ACC-38) ship at all, or is self-registration the only route? It matters for enterprise deals where the buyer is not the user |
 | F31 | Should replacing an image warn that existing shoots will become stale, or is the label after the fact enough? |
-| F12 | Can a product carry multiple colourways as one record, or is each colourway a separate product? Affects SKU uniqueness and shoot counts |
+| F12 | ~~One record per colourway, or one product with many?~~ **Decided:** one product (the style) with many colourways. Each colour has an optional SKU, its own images, its own shoot count. Shoots pick one or more colours (§5.1.1, FR-SHT-01j) |
 | F9 | Is the demo shoot a real generation, or pre-rendered? Real costs money on every signup |
 | F25 | Should preview be free rather than 1 credit? Free removes all friction from getting the combination right, at the cost of one image per attempt |
 | F26 | Without a flag button, how do we detect a systematically failing model or garment type before support volume reveals it? |

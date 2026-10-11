@@ -28,7 +28,9 @@
 -- =====================================================================
 
 SET NAMES utf8mb4;
-SET FOREIGN_KEY_CHECKS = 1;
+-- Off while creating: some tables reference tables defined later in this file
+-- (SegmentModels -> Models). Re-enabled at the end.
+SET FOREIGN_KEY_CHECKS = 0;
 
 -- =====================================================================
 -- 1. ACCOUNTS, MEMBERS, ACCESS                          FRD §2, §3
@@ -259,9 +261,11 @@ CREATE TABLE Plans (
 CREATE TABLE PlanPrices (
   Id                      CHAR(26)     NOT NULL,
   PlanId                  CHAR(26)     NOT NULL,
+  ItemType                ENUM('base','seat') NOT NULL DEFAULT 'base',  -- base plan fee, or the
+                                                                       -- per-seat price above IncludedSeats
   StripePriceId           VARCHAR(80)  NOT NULL,
   CurrencyCode            CHAR(3)      NOT NULL,
-  IntervalUnit            ENUM('month','Year') NOT NULL,
+  IntervalUnit            ENUM('month','year') NOT NULL,
   AmountMinor             INT          NOT NULL,      -- paise / cents
   IsActive                TINYINT(1)   NOT NULL DEFAULT 1,
   PRIMARY KEY (Id),
@@ -280,11 +284,21 @@ CREATE TABLE Subscriptions (
   -- has one Stripe customer for life, including before and after any subscription.
   Status                  ENUM('trialing','active','past_due','paused',
                                'canceled','incomplete') NOT NULL,
-  IntervalUnit            ENUM('month','Year') NOT NULL,
+  IntervalUnit            ENUM('month','year') NOT NULL,
   CurrentPeriodStart      DATETIME(3)  NOT NULL,
   CurrentPeriodEnd        DATETIME(3)  NOT NULL,
+  -- seats: IncludedSeats come with the plan; PaidSeats are billed per seat
+  -- through a second Stripe subscription item. Viewers never consume a seat.
+  IncludedSeats           SMALLINT     NOT NULL DEFAULT 1,
+  PaidSeats               SMALLINT     NOT NULL DEFAULT 0,
+  StripeSeatItemId        VARCHAR(80)  NULL,
   -- FR-BIL-10a: annual is billed once, Credits release monthly
   NextCreditReleaseAt     DATETIME(3)  NULL,
+  ReleasesRemaining       SMALLINT     NULL,       -- annual only; 12 at start, 0 at end
+  -- pause: length capped by a system config value; the resume job reads PauseEndsAt
+  PausedAt                DATETIME(3)  NULL,
+  PauseEndsAt             DATETIME(3)  NULL,
+  PauseDaysUsedThisYear   SMALLINT     NOT NULL DEFAULT 0,
   CancelAtPeriodEnd       TINYINT(1)   NOT NULL DEFAULT 0,
   CanceledAt              DATETIME(3)  NULL,
   CreatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -293,8 +307,9 @@ CREATE TABLE Subscriptions (
   UNIQUE KEY UX_Subscriptions_StripeSubscriptionId (StripeSubscriptionId),
   KEY IX_Subscriptions_ClientIdStatus (ClientId, Status),
   KEY IX_Subscriptions_StatusNextCreditReleaseAt (Status, NextCreditReleaseAt),  -- the release job
-  KEY IX_Subscriptions_StatusPauseEndsAt (Status, PauseEndsAt),                 -- the resume job      -- drives the release job
+  KEY IX_Subscriptions_StatusPauseEndsAt (Status, PauseEndsAt),                 -- the resume job
   CONSTRAINT FK_Subscriptions_ClientId FOREIGN KEY (ClientId) REFERENCES Clients(Id),
+  CONSTRAINT FK_Subscriptions_PlanPriceId FOREIGN KEY (PlanPriceId) REFERENCES PlanPrices(Id),
   CONSTRAINT FK_Subscriptions_PlanId FOREIGN KEY (PlanId) REFERENCES Plans(Id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -323,7 +338,7 @@ CREATE TABLE CreditLedger (
                              'expiry','rollover') NOT NULL,
   Delta                   INT          NOT NULL,      -- signed
   BalanceAfter            INT          NOT NULL,      -- snapshot for statement rendering
-  CreditSource            ENUM('trial','Plans','pack','grant') NOT NULL,
+  CreditSource            ENUM('trial','plan','pack','grant') NOT NULL,
   ExpiresAt               DATETIME(3)  NULL,          -- trial Credits, FR-CR-09
   RunId                   CHAR(26)     NULL,
   RunImageId              CHAR(26)     NULL,
@@ -840,7 +855,8 @@ CREATE TABLE Products (
   Id                      CHAR(26)     NOT NULL,
   ClientId                CHAR(26)     NOT NULL,
   Name                    VARCHAR(200) NOT NULL,
-  Sku                     VARCHAR(80)  NOT NULL,
+  Sku                     VARCHAR(80)  NOT NULL,    -- the STYLE code. Colour-level SKUs live on
+                                                    -- ProductVariants
   ExternalId              VARCHAR(120) NULL,
   SegmentId               CHAR(26)     NOT NULL,    -- Menswear, Swimwear, Nightwear…
                                                     -- NOT NULL: a product with no segment cannot
@@ -858,7 +874,6 @@ CREATE TABLE Products (
                                                        -- creation, so re-typing a category never
                                                        -- changes the plate type of past products
   BrandId                 CHAR(26)     NULL,
-  ColourId                CHAR(26)     NULL,
   FabricId                CHAR(26)     NULL,
   SeasonId                CHAR(26)     NULL,
   SizeSetId               CHAR(26)     NULL,
@@ -873,7 +888,8 @@ CREATE TABLE Products (
   PriceMinor              INT          NULL,
   CurrencyCode            CHAR(3)      NULL,
   Status                  ENUM('draft','active','archived') NOT NULL DEFAULT 'draft',
-  -- denormalised for list views and the dashboard; maintained on Runs completion
+  -- denormalised roll-up across all colourways, for list views and the dashboard;
+  -- maintained on Runs completion
   ShootCount              INT          NOT NULL DEFAULT 0,
   LastShotAt              DATETIME(3)  NULL,
   IsStale                 TINYINT(1)   NOT NULL DEFAULT 0,       -- FR-IMG-13
@@ -892,10 +908,44 @@ CREATE TABLE Products (
   CONSTRAINT FK_Products_CategoryId FOREIGN KEY (CategoryId) REFERENCES Categories(Id),
   CONSTRAINT FK_Products_SubCategoryId FOREIGN KEY (SubCategoryId) REFERENCES SubCategories(Id),
   CONSTRAINT FK_Products_BrandId FOREIGN KEY (BrandId) REFERENCES Brands(Id),
-  CONSTRAINT FK_Products_ColourId FOREIGN KEY (ColourId) REFERENCES Colours(Id),
   CONSTRAINT FK_Products_FabricId FOREIGN KEY (FabricId) REFERENCES Fabrics(Id),
   CONSTRAINT FK_Products_SeasonId FOREIGN KEY (SeasonId) REFERENCES Seasons(Id),
   CONSTRAINT FK_Products_SizeSetId FOREIGN KEY (SizeSetId) REFERENCES SizeSets(Id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Colourways. Products is the STYLE; each colour it comes in is one row here.
+-- Every product has at least one variant: a single-colour product is a product
+-- with one variant, so nothing downstream needs a "no variants" special case.
+-- Variants are by COLOUR only — sizes need no imagery of their own and stay on
+-- Products.SizeSetId. Everything that decides the plate (segment, gender,
+-- sub-category, base cut) is on the style, so all colours shoot on the same
+-- plates and the same eligible models.
+CREATE TABLE ProductVariants (
+  Id                      CHAR(26)     NOT NULL,
+  ClientId                CHAR(26)     NOT NULL,
+  ProductId               CHAR(26)     NOT NULL,
+  ColourId                CHAR(26)     NOT NULL,
+  Sku                     VARCHAR(80)  NULL,       -- optional colour SKU. NULL = the style code
+                                                   -- identifies it (one SKU per style catalogues).
+                                                   -- NULLs do not collide in the unique key
+  PriceMinor              INT          NULL,       -- overrides Products.PriceMinor when set
+  SortOrder               SMALLINT     NOT NULL DEFAULT 0,
+  Status                  ENUM('active','archived') NOT NULL DEFAULT 'active',
+  ShootCount              INT          NOT NULL DEFAULT 0,
+  LastShotAt              DATETIME(3)  NULL,
+  IsStale                 TINYINT(1)   NOT NULL DEFAULT 0,   -- FR-IMG-13, per colour
+  CreatedBy               CHAR(26)     NULL,
+  CreatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UpdatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  DeletedAt               DATETIME(3)  NULL,
+  PRIMARY KEY (Id),
+  UNIQUE KEY UX_ProductVariants_ProductIdColourId (ProductId, ColourId),   -- a colour once per style
+  UNIQUE KEY UX_ProductVariants_ClientIdSku (ClientId, Sku),
+  KEY IX_ProductVariants_ClientIdProductId (ClientId, ProductId),
+  KEY IX_ProductVariants_ClientIdColourId (ClientId, ColourId),
+  CONSTRAINT FK_ProductVariants_ClientId FOREIGN KEY (ClientId) REFERENCES Clients(Id),
+  CONSTRAINT FK_ProductVariants_ProductId FOREIGN KEY (ProductId) REFERENCES Products(Id),
+  CONSTRAINT FK_ProductVariants_ColourId FOREIGN KEY (ColourId) REFERENCES Colours(Id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- GLOBAL AND SUPER-ADMIN OWNED, not client master data.
@@ -962,7 +1012,8 @@ CREATE TABLE ProductTags (
 CREATE TABLE ProductImages (
   Id                      CHAR(26)     NOT NULL,
   ClientId                CHAR(26)     NOT NULL,
-  ProductId               CHAR(26)     NOT NULL,
+  ProductId               CHAR(26)     NOT NULL,   -- denormalised from the variant
+  ProductVariantId        CHAR(26)     NOT NULL,   -- images belong to a COLOUR, not the style
   -- FRONT is required and drives most poses. BACK is optional and is the only
   -- source for a back-view pose — a back plate cannot be dressed from a front
   -- garment image. ADDITIONAL images are reference only and never generate.
@@ -973,12 +1024,12 @@ CREATE TABLE ProductImages (
   ByteSize                INT          NULL,
   ContentType             VARCHAR(60)  NULL,
   IsActive                TINYINT(1)   NOT NULL DEFAULT 1,
-  -- One active image per role per product. Active rows carry a composite key,
+  -- One active image per role per colourway. Active rows carry a composite key,
   -- inactive rows carry NULL, so the unique index permits many archived images
   -- and exactly one live front and one live back.
   ActiveRoleKey           VARCHAR(40) GENERATED ALWAYS AS
                           (CASE WHEN IsActive = 1 AND Role IN ('front','back')
-                                THEN CONCAT(ProductId, ':', Role) ELSE NULL END) STORED,
+                                THEN CONCAT(ProductVariantId, ':', Role) ELSE NULL END) STORED,
   ShootCount              INT          NOT NULL DEFAULT 0,       -- FR-IMG-07
   UploadedBy              CHAR(26)     NULL,
   UploadedAt              DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -988,9 +1039,11 @@ CREATE TABLE ProductImages (
   ModerationReason        VARCHAR(255) NULL,
   PRIMARY KEY (Id),
   UNIQUE KEY UX_ProductImages_ActiveRoleKey (ActiveRoleKey),
-  KEY IX_ProductImages_ProductIdRoleIsActive (ProductId, Role, IsActive),
+  KEY IX_ProductImages_ProductVariantIdRoleIsActive (ProductVariantId, Role, IsActive),
+  KEY IX_ProductImages_ProductId (ProductId),
   KEY IX_ProductImages_ClientId (ClientId),
-  CONSTRAINT FK_ProductImages_ProductId FOREIGN KEY (ProductId) REFERENCES Products(Id)
+  CONSTRAINT FK_ProductImages_ProductId FOREIGN KEY (ProductId) REFERENCES Products(Id),
+  CONSTRAINT FK_ProductImages_ProductVariantId FOREIGN KEY (ProductVariantId) REFERENCES ProductVariants(Id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =====================================================================
@@ -1008,7 +1061,7 @@ CREATE TABLE Models (
   PromptTemplateId        CHAR(26)     NULL,
   GenerationSeed          VARCHAR(80)  NULL,          -- reproducibility, PRD T5
   -- FRD §6.1 Availability
-  Availability            ENUM('shared','Reserved','exclusive','cooling','retired')
+  Availability            ENUM('shared','reserved','exclusive','cooling','retired')
                         NOT NULL DEFAULT 'shared',
   ReservedToClientId      CHAR(26)     NULL,
   ReservedFrom            DATETIME(3)  NULL,
@@ -1082,7 +1135,7 @@ CREATE TABLE Scenes (
   UNIQUE KEY UX_Scenes_Code (Code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE Variants (
+CREATE TABLE PlateVariants (
   Id                      CHAR(26)     NOT NULL,
   Code                    VARCHAR(20)  NOT NULL,      -- 'bt_01','ew_03'
   Kind                    ENUM('bottom','top','eyewear') NOT NULL,
@@ -1093,8 +1146,8 @@ CREATE TABLE Variants (
   NegativePrompt          TEXT         NULL,
   IsActive                TINYINT(1)   NOT NULL DEFAULT 1,
   PRIMARY KEY (Id),
-  UNIQUE KEY UX_Variants_Code (Code),
-  KEY IX_Variants_KindIsActive (Kind, IsActive)
+  UNIQUE KEY UX_PlateVariants_Code (Code),
+  KEY IX_PlateVariants_KindIsActive (Kind, IsActive)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Approved canonical plates. PRD §7.7 storage layout.
@@ -1134,21 +1187,21 @@ CREATE TABLE Plates (
 -- merchandiser can select a model whose shoot will fail at generation for a
 -- reason that was knowable at selection.
 
--- Stage-02 cache. PRD §8: key is Models + PlateType + Variants + Poses.
-CREATE TABLE VariantRenders (
+-- Stage-02 cache. PRD §8: key is Model + PlateType + PlateVariant + Pose.
+CREATE TABLE PlateVariantRenders (
   Id                      CHAR(26)     NOT NULL,
   CacheKey                VARCHAR(120) NOT NULL,
   PlateId                 CHAR(26)     NOT NULL,
-  VariantId               CHAR(26)     NOT NULL,
+  PlateVariantId          CHAR(26)     NOT NULL,
   ImageUri                VARCHAR(500) NOT NULL,
   HitCount                INT          NOT NULL DEFAULT 0,
   CreatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   LastUsedAt              DATETIME(3)  NULL,
   PRIMARY KEY (Id),
-  UNIQUE KEY UX_VariantRenders_CacheKey (CacheKey),
-  KEY IX_VariantRenders_PlateIdVariantId (PlateId, VariantId),
-  CONSTRAINT FK_VariantRenders_PlateId FOREIGN KEY (PlateId) REFERENCES Plates(Id),
-  CONSTRAINT FK_VariantRenders_VariantId FOREIGN KEY (VariantId) REFERENCES Variants(Id)
+  UNIQUE KEY UX_PlateVariantRenders_CacheKey (CacheKey),
+  KEY IX_PlateVariantRenders_PlateIdPlateVariantId (PlateId, PlateVariantId),
+  CONSTRAINT FK_PlateVariantRenders_PlateId FOREIGN KEY (PlateId) REFERENCES Plates(Id),
+  CONSTRAINT FK_PlateVariantRenders_PlateVariantId FOREIGN KEY (PlateVariantId) REFERENCES PlateVariants(Id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE ModelFavourites (
@@ -1202,7 +1255,7 @@ CREATE TABLE ShootConfigurations (
   CategoryId              CHAR(26)     NULL,
   PlateType               ENUM('T','B','F') NOT NULL,
   ModelId                 CHAR(26)     NULL,
-  VariantId               CHAR(26)     NULL,
+  PlateVariantId          CHAR(26)     NULL,
   SceneId                 CHAR(26)     NULL,
   PoseIds                 JSON         NULL,          -- ordered; order is render order
   Formats                 JSON         NULL,          -- ["9:16","4:5"]
@@ -1221,13 +1274,15 @@ CREATE TABLE Runs (
   ConfigurationId         CHAR(26)     NULL,
   UserAccessId            CHAR(26)     NOT NULL,  -- FR-ROL-26, always recorded
   ProductId               CHAR(26)     NULL,
+  ProductVariantId        CHAR(26)     NULL,      -- the colourway shot. A multi-colour shoot is
+                                                  -- one run per colour sharing a ConfigurationId
   ProductImageId          CHAR(26)     NULL,      -- FR-SHT-04a, the FRONT image used
   ProductBackImageId      CHAR(26)     NULL,      -- the BACK image, when back poses were selected
   AdHocGarmentUri         VARCHAR(500) NULL,      -- when not from a Products
   CategoryId              CHAR(26)     NULL,
   PlateType               ENUM('T','B','F') NOT NULL,
   ModelId                 CHAR(26)     NOT NULL,
-  VariantId               CHAR(26)     NULL,
+  PlateVariantId          CHAR(26)     NULL,
   SceneId                 CHAR(26)     NULL,
   PoseIds                 JSON         NOT NULL,
   Formats                 JSON         NOT NULL,
@@ -1256,12 +1311,15 @@ CREATE TABLE Runs (
   PRIMARY KEY (Id),
   KEY IX_Runs_ClientIdCreatedAt (ClientId, CreatedAt),
   KEY IX_Runs_ProductIdCreatedAt (ProductId, CreatedAt),
+  KEY IX_Runs_ProductVariantIdCreatedAt (ProductVariantId, CreatedAt),
+  KEY IX_Runs_ConfigurationId (ConfigurationId),
   KEY IX_Runs_StatusQueuedAt (Status, QueuedAt),                       -- queue worker
   KEY IX_Runs_ClientIdApprovalStateSubmittedAt (ClientId, ApprovalState, SubmittedAt),
   KEY IX_Runs_ClientIdUserAccessIdCreatedAt (ClientId, UserAccessId, CreatedAt),
   CONSTRAINT FK_Runs_ClientId FOREIGN KEY (ClientId) REFERENCES Clients(Id),
   CONSTRAINT FK_Runs_ModelId FOREIGN KEY (ModelId) REFERENCES Models(Id),
   CONSTRAINT FK_Runs_ProductId FOREIGN KEY (ProductId) REFERENCES Products(Id),
+  CONSTRAINT FK_Runs_ProductVariantId FOREIGN KEY (ProductVariantId) REFERENCES ProductVariants(Id),
   CONSTRAINT FK_Runs_ProductImageId FOREIGN KEY (ProductImageId) REFERENCES ProductImages(Id),
   CONSTRAINT FK_Runs_ProductBackImageId FOREIGN KEY (ProductBackImageId) REFERENCES ProductImages(Id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -1276,10 +1334,11 @@ CREATE TABLE RunImages (
   ImageUri                VARCHAR(500) NULL,
   WidthPx                 INT          NULL,
   HeightPx                INT          NULL,
+  ByteSize                INT          NULL,          -- storage tracking, rolled up into ClientUsage
   Status                  ENUM('queued','generating','delivered','failed','cancelled')
                         NOT NULL DEFAULT 'queued',
-  FailureStage            ENUM('Plates','Variants','tryon','Scenes') NULL,
-  FailureType             ENUM('system','Provider','policy','timeout') NULL,
+  FailureStage            ENUM('plate','variant','tryon','scene') NULL,
+  FailureType             ENUM('system','provider','policy','timeout') NULL,
   FailureDetail           VARCHAR(400) NULL,
   Charged                 TINYINT(1)   NOT NULL DEFAULT 0,       -- FR-CR-02
   IsSelected              TINYINT(1)   NOT NULL DEFAULT 0,       -- FR-AST-07
@@ -1301,7 +1360,7 @@ CREATE TABLE RunImages (
 CREATE TABLE RunImageStages (
   Id                      CHAR(26)     NOT NULL,
   RunImageId              CHAR(26)     NOT NULL,
-  Stage                   ENUM('Plates','Variants','tryon','Scenes') NOT NULL,
+  Stage                   ENUM('plate','variant','tryon','scene') NOT NULL,
   Status                  ENUM('pending','running','succeeded','failed','skipped','cache_hit')
                     NOT NULL DEFAULT 'pending',
   Provider                VARCHAR(60)  NULL,
@@ -1418,7 +1477,11 @@ CREATE TABLE AuditLogs (
   ActorType               ENUM('member','staff','system') NOT NULL,
   ActorId                 CHAR(26)     NULL,
   ImpersonatedBy          CHAR(26)     NULL,
-  Action                  VARCHAR(80)  NOT NULL,          -- 'Products.deleted','Credits.granted'
+  Action                  VARCHAR(80)  NOT NULL,          -- 'product.deleted','credits.granted'
+  ActorJob                VARCHAR(80)  NULL,              -- FR-AUD-06: the job or handler, when ActorType='system'
+  Category                ENUM('general','transient','financial','safety') NOT NULL DEFAULT 'general',
+                                                          -- FR-AUD-18: picks the retention bucket.
+                                                          -- 'general' is in no bucket, so it is kept forever
   EntityType              VARCHAR(60)  NOT NULL,
   EntityId                CHAR(26)     NULL,
   Reason                  VARCHAR(600) NULL,              -- mandatory on staff actions
@@ -1480,7 +1543,8 @@ CREATE TABLE AuditLogs (
 --    per client — it changes rarely and is read on every product form.
 --
 -- 9. NOT YET MODELLED — open decisions in the FRD:
---    · colourway variants on one Products            (F12)
 --    · asset retention after cancellation           (F6)
 --    · queue priority by Plans                       (gap)
 --    · multi-currency tax beyond GST                (gap)
+
+SET FOREIGN_KEY_CHECKS = 1;
