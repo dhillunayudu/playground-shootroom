@@ -328,14 +328,16 @@ T('Models','library','One synthetic person — each variant in a roster cell is 
   'VocabularyVersion|VARCHAR','ReferenceImageUri|VARCHAR|n','GenerationSeed|VARCHAR|n','GeneratorProvider|VARCHAR|n','GeneratorModelVersion|VARCHAR|n','Availability|ENUM',
   'ReservedToClientId|CHAR(26)|fn','ReservedFrom|DATETIME|n','ReservedUntil|DATETIME|n',
   'CoolingUntil|DATETIME|n','UsageCount|INT','ApprovedBy|CHAR(26)|n','ApprovedAt|DATETIME|n']),
-T('AttributeVocabulary','library','Controlled vocabulary. Drives the filter rail, the prompt and the coverage dashboard.',
+T('AttributeVocabulary','library','The allowed values for every model attribute — one row per value for the life of the vocabulary. Drives the filter rail, the prompt (PromptFragment) and the coverage dashboard.',
  ['Id|CHAR(26)|p','Namespace|VARCHAR(40)','AttrKey|VARCHAR(60)','AttrValue|VARCHAR(120)',
-  'Label|VARCHAR(120)','FitRelevant|TINYINT','IsFilterable|TINYINT','AddedInVersion|VARCHAR','DeprecatedAt|DATETIME|n']),
+  'Label|VARCHAR(120)','PromptFragment|VARCHAR|n','SortOrder|SMALLINT','FitRelevant|TINYINT','IsFilterable|TINYINT','AddedInVersion|VARCHAR','DeprecatedAt|DATETIME|n',
+  'CreatedByStaffId|CHAR(26)|n','CreatedAt|DATETIME','UpdatedByStaffId|CHAR(26)|n','UpdatedAt|DATETIME']),
 T('ModelAttributes','library','Each model\'s attribute values — the filter index. One value per attribute per model, and only a value that exists in AttributeVocabulary. Gender lives on Models, not here. Distinct from product Tags.',
  ['ModelId|CHAR(26)|pf','Namespace|VARCHAR(40)|p','AttrKey|VARCHAR(60)|p','AttributeVocabularyId|CHAR(26)|f']),
-T('Poses','library','try_on_safe marks the frontal Poses used as try-on input.',
- ['Id|CHAR(26)|p','Code|VARCHAR(20)','Label|VARCHAR(120)','Description|VARCHAR|n',
-  'TryOnSafe|TINYINT','RequiresBackImage|TINYINT','SortOrder|SMALLINT','IsActive|TINYINT']),
+T('Poses','library','Global pose list. TryOnSafe marks the frontal poses used as try-on input; the rest come from the scene pass. RequiresBackImage poses need a back image on every selected colourway.',
+ ['Id|CHAR(26)|p','Code|VARCHAR(20)','Label|VARCHAR(120)','Description|VARCHAR|n','PromptFragment|VARCHAR|n',
+  'TryOnSafe|TINYINT','RequiresBackImage|TINYINT','SortOrder|SMALLINT','IsActive|TINYINT',
+  'CreatedByStaffId|CHAR(26)|n','CreatedAt|DATETIME','UpdatedByStaffId|CHAR(26)|n','UpdatedAt|DATETIME']),
 T('Scenes','library','Applied after try-on, as a separate relight pass.',
  ['Id|CHAR(26)|p','Code|VARCHAR(30)','Label|VARCHAR(120)','RelightPrompt|TEXT|n',
   'NegativePrompt|TEXT|n','IsActive|TINYINT']),
@@ -401,7 +403,7 @@ T('AuditLogs','ops','Every actor — members, staff and system jobs. Append only
 /* Tables reviewed and finalised. Add a name here as each is signed off. */
 var REVIEWED=['Clients','Users','UserAccess','Invitations','AuthTokens','Sessions',
               'StaffUsers','StaffRoles','ClientSettings','NotificationPreferences','Plans','PlanPrices','Subscriptions',
-              'SubscriptionPeriods','UsageSnapshots','CreditPacks','CreditLedger','CreditBalances','Invoices','BillingProfiles','StripeEvents','ClientUsage','Brands','Segments','Categories','SubCategories','SegmentModels','ClientEntitlements','Colours','Fabrics','Seasons','SizeSets','AuditLogs','Models','ModelAttributes'];
+              'SubscriptionPeriods','UsageSnapshots','CreditPacks','CreditLedger','CreditBalances','Invoices','BillingProfiles','StripeEvents','ClientUsage','Brands','Segments','Categories','SubCategories','SegmentModels','ClientEntitlements','Colours','Fabrics','Seasons','SizeSets','AuditLogs','Models','ModelAttributes','AttributeVocabulary','Poses'];
 var isDone=function(n){ return REVIEWED.indexOf(n)>-1; };
 
 /* ============ relationships ============ */

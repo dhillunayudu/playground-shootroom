@@ -1112,6 +1112,8 @@ CREATE TABLE AttributeVocabulary (
   AttrKey                 VARCHAR(60)  NOT NULL,
   AttrValue               VARCHAR(120) NOT NULL,
   Label                   VARCHAR(120) NOT NULL,
+  PromptFragment          VARCHAR(160) NULL,      -- prompt wording when it differs from the label:
+                                                  -- 'warm hazel eyes' for Hazel
   SortOrder               SMALLINT     NOT NULL DEFAULT 0,
   FitRelevant             TINYINT(1)   NOT NULL DEFAULT 0,   -- drives relaxation order
   IsFilterable            TINYINT(1)   NOT NULL DEFAULT 0,   -- FR-CAT / F2.2 rail
@@ -1121,6 +1123,10 @@ CREATE TABLE AttributeVocabulary (
   -- (DeprecatedAt IS NULL or deprecated after v).
   AddedInVersion          VARCHAR(20)  NOT NULL,
   DeprecatedAt            DATETIME(3)  NULL,
+  CreatedByStaffId        CHAR(26)     NULL,
+  CreatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UpdatedByStaffId        CHAR(26)     NULL,
+  UpdatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (Id),
   UNIQUE KEY UX_AttributeVocabulary_NamespaceAttrKeyAttrValue (Namespace, AttrKey, AttrValue),
   UNIQUE KEY UX_AttributeVocabulary_IdNamespaceAttrKey (Id, Namespace, AttrKey),  -- target of the ModelAttributes composite FK
@@ -1152,12 +1158,20 @@ CREATE TABLE Poses (
   Code                    VARCHAR(20)  NOT NULL,              -- 'ps_01'
   Label                   VARCHAR(120) NOT NULL,
   Description             VARCHAR(500) NULL,
+  PromptFragment          VARCHAR(300) NULL,      -- exact pose wording for plate generation
+  -- Only frontal poses dress reliably, so only these are try-on input; the
+  -- rest are produced from the dressed image in the scene pass.
   TryOnSafe               TINYINT(1)   NOT NULL DEFAULT 0,
-  -- A back-view pose cannot be produced from a front garment image. Poses that
-  -- need one are unavailable unless the product holds a back image.
+  -- A back-view pose cannot be produced from a front garment image. It is
+  -- available only when EVERY colourway selected for the shoot holds an
+  -- active back image (FRD FR-SHT-03a).
   RequiresBackImage       TINYINT(1)   NOT NULL DEFAULT 0,
   SortOrder               SMALLINT     NOT NULL DEFAULT 0,
   IsActive                TINYINT(1)   NOT NULL DEFAULT 1,
+  CreatedByStaffId        CHAR(26)     NULL,
+  CreatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UpdatedByStaffId        CHAR(26)     NULL,
+  UpdatedAt               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (Id),
   UNIQUE KEY UX_Poses_Code (Code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
