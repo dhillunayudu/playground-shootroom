@@ -371,14 +371,95 @@ A model record holds no image data, only references. Images live in object stora
 |---|---|---|
 | 1 | Studio admin | Open the Plate Console, select a roster entry |
 | 2 | Studio admin | Review the pre-filled attributes; override any that read wrong for the casting |
+| 2a | Studio admin | **Generate and approve the hero portrait** — the model's reference image (§7.9.2). Record its seed, provider and model version |
 | 3 | Studio admin | Copy the positive and negative prompts for the required plate type and pose |
-| 4 | Studio admin | Run in the image generator. Regenerate until the output passes visual judgement |
+| 4 | Studio admin | Run in the image generator **with the reference image attached**. Regenerate until the output passes visual judgement and reads as the same person |
 | 5 | Studio admin | Score against the §7.6 QA checklist. Any failure sends it back to step 4 |
 | 6 | Studio admin | Run the five-garment try-on test (§7.6 item 7) on the frontal plate |
 | 7 | Studio admin | Upload to the §7.7 storage path; the model record moves to `approved` |
 | 8 | Second reviewer | Sample audit — minimum 20% of plates, and 100% of any cell where one plate failed |
 
 **Automation boundary.** The console may be extended to call the generation API directly, submitting the prompt it already writes and returning candidates. Steps 5 to 8 stay manual regardless. Automating the call is a convenience; automating the judgement is not on the roadmap.
+
+### 7.9 Model identity and reproducibility
+
+A library model is only useful if it stays **the same person** across every plate built for it — every pose, plate type and base cut — and if that person can be **regenerated later** when a new pose or base cut is added. This section records how identity is held, what is stored to make it reproducible, and what was verified about the generation providers.
+
+#### 7.9.1 What a "model" is in the data
+
+| Term | Meaning | Where it lives |
+|---|---|---|
+| **Model** | One specific synthetic person — bm_014. The four variants in a gender × ethnicity cell are **four models**, each its own record | `Models`, one row each (104 at launch) |
+| **Attributes** | Eye colour, build, hair and so on — one value per attribute | `ModelTags`, one row per attribute |
+| **Plate** | One generated image of a model: plate type × pose × base cut | `Plates` |
+| **Plate variant render** | A plate with a base garment inpainted (the jeans under a top shoot) | `PlateVariantRenders` |
+
+A prompt is **assembled** from the model's attributes plus the pose, plate type and base cut, and **stored on the image it produced**. It is never stored on `ModelTags` (one attribute per row cannot hold a whole prompt) and never on `Models` (the prompt differs per pose).
+
+#### 7.9.2 How identity is held: reference image first, seed second
+
+**The identity anchor is a reference image, not a seed.**
+
+1. For each model, the operator first generates and approves one **hero portrait**. This is the model's reference image.
+2. Every plate for that model is then generated **from the reference image** — using the provider's image-reference, character-consistency or image-edit capability — so the face carries across poses.
+3. The seed of the hero portrait is recorded where the provider supports one, as a secondary aid to regeneration.
+
+**What a seed is, simply.** An image generator starts every picture from random noise; the seed is the number that picks which noise. Same prompt + same seed + same provider + same model version ⇒ the same image again. Different seed ⇒ a different face, even with an identical prompt. Think of it as the model's DNA number — but only within one provider and one model version.
+
+**Why the seed alone is not enough.**
+
+| Limit | Consequence |
+|---|---|
+| A seed is meaningful only for **one provider and one model version** | Seed 48213907 on Flux and on another generator are unrelated faces. A provider upgrading its model can change the output for the same seed. The seed is useless without the provider and version recorded beside it |
+| A seed fixes the starting noise, **not the identity** | Same seed with "front pose" and with "three-quarter pose" gives a similar person, not the same one |
+| Different seeds do **not guarantee different faces** | Two seeds can produce lookalikes. Distinctness across the roster is a QA check (§7.6), not a property of the seed |
+| Not every provider accepts a seed | See §7.9.3. The design must work without one |
+
+#### 7.9.3 Provider support — verified 11 October 2026
+
+Checked against each provider's own documentation. **Re-verify before choosing a provider**; these APIs change.
+
+| Provider / model | Accepts a seed? | Reference images for consistency? | Notes |
+|---|---|---|---|
+| **Flux (via fal.ai)** | **Yes** — `seed` integer | Via image-to-image and adapter models | fal's schema: *"The same seed and the same prompt given to the same version of the model will output the same image every time."* Determinism is tied to the model version |
+| **Google Imagen (Vertex AI)** | **Yes**, `seed` 1 – 2,147,483,647 | — | Deterministic **only with `addWatermark: false`** (required on model version 006+ when a seed is used). Google states many Imagen endpoints are being discontinued and recommends migrating to Gemini image models before 30 June 2026 |
+| **Google Gemini image models ("Nano Banana")** | **Not documented** | **Yes** — up to 14 reference images; 4–5 of them specifically for character consistency, depending on model | The direction of travel: consistency through references, not seeds |
+| **OpenAI image models** | **Unconfirmed** — believed not supported | Image edit with input images | The parameter list could not be verified at the time of writing. Treat as no seed until confirmed |
+
+Sources: [fal.ai — FLUX.1 [dev] API](https://fal.ai/models/fal-ai/flux/dev/api) · [Google Cloud — Generate deterministic images](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/generate-deterministic-images) · [Google AI — Gemini image generation](https://ai.google.dev/gemini-api/docs/image-generation) · [Vercel AI SDK — Image generation](https://ai-sdk.dev/docs/ai-sdk-core/image-generation)
+
+**Implication.** The newer generators are converging on reference images for consistency and some drop the seed entirely. The library therefore treats the reference image as mandatory and the seed as optional.
+
+#### 7.9.4 What is recorded
+
+| Where | Field | Purpose |
+|---|---|---|
+| `Models` | `ReferenceImageUri` | The approved hero portrait — the identity anchor every plate is built from |
+| `Models` | `GenerationSeed` *(nullable)* | Seed of the hero portrait, when the provider supports one |
+| `Models` | `GeneratorProvider`, `GeneratorModelVersion` | Without these the seed cannot be reused |
+| `Models` | `StoragePrefix` | The one folder holding every image of the model (`/models/bm_014/`). Plates store only their path inside it, so a model can be moved, copied or removed as a unit (S2) |
+| `Models` | `VocabularyVersion` | Which version of the attribute vocabulary the model was tagged against. When the vocabulary grows (eyewear and hairstyle were added after the first roster), this identifies models needing re-tagging |
+| `Models` | `UsageCount`, `LastUsedAt` | How often the model is shot — library planning and over-exposure. **Counts runs, not images.** Recomputed from `Runs` by a scheduled job, never incremented inside a shoot (see ID6) |
+| `Plates` | `Prompt`, `NegativePrompt` | The exact text that produced this image |
+| `Plates` | `Seed`, `GeneratorProvider`, `GeneratorModelVersion` | What actually ran — normally the model's, but a single pose may be retried with an override |
+| `Plates` | `ReferenceImageUri` | The reference the plate was generated from |
+| `PlateVariants` | `InpaintPrompt` | Shared garment prompt — "dark denim baggy jeans" — for every model that wears it |
+| `PlateVariantRenders` | Final prompt sent | The assembled inpaint prompt for that plate + garment combination |
+
+**Vocabulary history.** The vocabulary itself is versioned value by value (`AttributeVocabulary.Version`, `DeprecatedAt`), so its state at any version can be reconstructed. A model's own re-tagging is not kept in a separate table: re-tagging is a change to a model and is written to the audit log with before and after values (FRD FR-AUD-04).
+
+| ID | Requirement | Priority |
+|---|---|---|
+| ID1 | Every model has an approved **reference image** before any plate is generated for it | Must |
+| ID2 | Every plate is generated from the model's reference image, using the provider's reference or image-edit capability | Must |
+| ID3 | Every generated image records its prompt, negative prompt, provider, provider model version and seed (if any) | Must |
+| ID4 | A seed is never stored without the provider and model version it belongs to | Must |
+| ID5 | Changing provider or provider model version for an existing model is a deliberate act: new plates are QA'd against the reference image for identity drift before release | Must |
+| ID6 | `UsageCount` and `LastUsedAt` are recomputed from `Runs` by a scheduled job. Models are shared across all clients, so incrementing a model row inside every shoot would make popular models a write hotspot | Must |
+| ID7 | Re-tagging a model to a new vocabulary version writes an audit entry with before and after attributes | Must |
+| ID8 | QA includes a **near-duplicate check** across the roster: no two models may read as the same person | Should |
+
+**Open — which generation provider?** The choice decides whether seeds are available at all and how reference images are passed. It should be made against §7.9.3, re-verified on the day, with a five-model pilot measuring identity hold across all poses (FRD F58).
 
 ---
 
